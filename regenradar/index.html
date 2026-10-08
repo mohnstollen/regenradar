@@ -1,0 +1,185 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta name="theme-color" content="#0b5cab">
+  <meta name="description" content="Regenradar (DWD) mit Umkreis-Warnung, Nowcast und aktuellem Wetter">
+  <title>Regenradar</title>
+  <link rel="manifest" href="manifest.webmanifest">
+  <link rel="icon" href="icons/icon-192.png">
+  <link rel="apple-touch-icon" href="icons/icon-192.png">
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" crossorigin="">
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <header class="topbar">
+    <div class="loc">
+      <div class="loc-name" id="locName">Kein Standort</div>
+      <div class="loc-sub" id="locSub">Standort ermitteln oder suchen</div>
+    </div>
+    <div class="actions">
+      <button id="btnLocate" title="Standort ermitteln" aria-label="Standort ermitteln">📍</button>
+      <button id="btnSearch" title="Ort suchen" aria-label="Ort suchen">🔍</button>
+      <button id="btnRefresh" title="Jetzt prüfen" aria-label="Jetzt prüfen">↻</button>
+      <button id="btnSettings" title="Einstellungen" aria-label="Einstellungen">⚙️</button>
+    </div>
+  </header>
+
+  <div id="alert" class="alert neutral" role="status" aria-live="polite">
+    <span id="alertIcon">⏳</span>
+    <div>
+      <div id="alertTitle">Noch keine Prüfung</div>
+      <div id="alertText" class="small"></div>
+    </div>
+  </div>
+
+  <div id="dwdAlerts"></div>
+
+  <main class="layout">
+    <section class="mapwrap">
+      <div id="map"></div>
+      <div class="radarbar">
+        <button id="btnPrev" aria-label="Vorheriges Bild">◀</button>
+        <button id="btnPlay" aria-label="Animation starten/stoppen">▶</button>
+        <button id="btnNext" aria-label="Nächstes Bild">▶|</button>
+        <button id="btnNow" aria-label="Aktuelles Bild">Jetzt</button>
+        <input type="range" id="frameSlider" min="0" max="0" value="0" aria-label="Radarzeitpunkt">
+        <span id="frameTime" class="mono">--:--</span>
+      </div>
+      <div class="legend small">
+        <span class="src" id="srcBadge">Quelle: –</span>
+        <span><i style="background:#9fd3ff"></i>schwach</span>
+        <span><i style="background:#2f7fff"></i>mäßig</span>
+        <span><i style="background:#f5c400"></i>stark</span>
+        <span><i style="background:#e0282e"></i>Starkregen</span>
+      </div>
+    </section>
+
+    <section class="panel">
+      <div class="card">
+        <h3>Regen am Standort – nächste 2 Stunden</h3>
+        <div id="nowcast" class="bars"></div>
+        <div class="small muted" id="nowcastInfo">DWD-Radar inkl. Vorhersage, 15-Minuten-Summen in mm</div>
+      </div>
+
+      <div class="card">
+        <div class="wx-head">
+          <div class="wx-icon" id="wxIcon">–</div>
+          <div>
+            <div class="wx-temp" id="wxTemp">– °C</div>
+            <div id="wxDesc">–</div>
+            <div class="small muted" id="wxStation"></div>
+          </div>
+        </div>
+        <div class="wx-grid">
+          <div><span>Niederschlag (1 h)</span><b id="wxPrecip">–</b></div>
+          <div><span>Luftfeuchte</span><b id="wxHum">–</b></div>
+          <div><span>Wind</span><b id="wxWind">–</b></div>
+          <div><span>Böen</span><b id="wxGust">–</b></div>
+          <div><span>Bewölkung</span><b id="wxCloud">–</b></div>
+          <div><span>Luftdruck</span><b id="wxPress">–</b></div>
+          <div><span>Heute min/max</span><b id="wxMinMax">–</b></div>
+          <div><span>Regenrisiko (Rest des Tages)</span><b id="wxPop">–</b></div>
+        </div>
+      </div>
+
+      <div class="card">
+        <h3>Radar-Analyse im Umkreis</h3>
+        <div class="wx-grid">
+          <div><span>Radius</span><b id="anRadius">–</b></div>
+          <div><span>Fläche mit Regen (jetzt)</span><b id="anCover">–</b></div>
+          <div><span>Nächster Regen</span><b id="anDist">–</b></div>
+          <div><span>Tendenz</span><b id="anTrend">–</b></div>
+          <div><span>Max. Intensität im Umkreis</span><b id="anMax">–</b></div>
+          <div><span>Regen am Standort erwartet</span><b id="anEta">–</b></div>
+        </div>
+        <div class="small muted" id="anInfo"></div>
+      </div>
+
+      <div class="small muted foot">
+        Wetter &amp; Radar: <a href="https://www.dwd.de/" target="_blank" rel="noopener">Deutscher Wetterdienst</a>
+        über <a href="https://brightsky.dev/" target="_blank" rel="noopener">Bright Sky</a> und
+        <a href="https://www.dwd.de/DE/leistungen/geodienste/geodienste.html" target="_blank" rel="noopener">DWD-Geodienste</a>.
+        Karte: <a href="https://basemap.de/" target="_blank" rel="noopener">basemap.de</a>
+        © GeoBasis-DE / <a href="https://www.bkg.bund.de" target="_blank" rel="noopener">BKG</a>
+        <span id="bkgYear"></span> <a href="https://creativecommons.org/licenses/by/4.0/" target="_blank" rel="noopener">CC BY 4.0</a>
+        bzw. <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noopener">OpenStreetMap</a>.
+        Außerhalb Deutschlands: <a href="https://www.rainviewer.com/" target="_blank" rel="noopener">RainViewer</a>,
+        <a href="https://open-meteo.com/" target="_blank" rel="noopener">Open-Meteo</a>.
+        <br>Tipp: Kartenwahl oben rechts auf der Karte. Lange drücken bzw. Rechtsklick setzt den Standort.
+      </div>
+    </section>
+  </main>
+
+  <dialog id="dlgSearch">
+    <form id="searchForm">
+      <h3>Ort suchen</h3>
+      <input type="text" id="searchInput" placeholder="z. B. Erlangen, 91052 oder 49.59, 11.00" autocomplete="off">
+      <div class="small muted">Ortsname, PLZ oder Koordinaten (Breite, Länge)</div>
+      <ul id="searchResults" class="results"></ul>
+      <div class="row end">
+        <button type="button" class="secondary" id="btnCloseSearch">Schließen</button>
+        <button type="submit">Suchen</button>
+      </div>
+    </form>
+  </dialog>
+
+  <dialog id="dlgSettings">
+    <form method="dialog">
+      <h3>Einstellungen</h3>
+      <label>Warn-Radius: <b id="radiusOut">25</b> km
+        <input type="range" id="setRadius" min="2" max="100" step="1">
+      </label>
+      <label>Vorwarnzeit (Prognose am Standort)
+        <select id="setLead">
+          <option value="0">aus – nur aktuelles Radar</option>
+          <option value="30">30 Minuten</option>
+          <option value="60">60 Minuten</option>
+          <option value="90">90 Minuten</option>
+          <option value="120">120 Minuten</option>
+        </select>
+      </label>
+      <label>Empfindlichkeit
+        <select id="setSensitivity">
+          <option value="1">hoch – jeder Niesel (ab 0,1 mm/h)</option>
+          <option value="2">mittel – leichter Regen (ab 0,5 mm/h)</option>
+          <option value="3">niedrig – spürbarer Regen (ab 2 mm/h)</option>
+        </select>
+      </label>
+      <label>Prüfintervall
+        <select id="setInterval">
+          <option value="5">alle 5 Minuten</option>
+          <option value="10">alle 10 Minuten</option>
+          <option value="15">alle 15 Minuten</option>
+          <option value="30">alle 30 Minuten</option>
+        </select>
+      </label>
+      <label>Hintergrundkarte
+        <select id="setBasemap">
+          <option value="bm_grau">basemap.de Grau (amtlich)</option>
+          <option value="bm_farbe">basemap.de Farbe (amtlich)</option>
+          <option value="osm">OpenStreetMap</option>
+        </select>
+      </label>
+      <label class="check"><input type="checkbox" id="setNotify"> Browser-Benachrichtigungen bei Regen</label>
+      <label class="check"><input type="checkbox" id="setAlertNotify"> Auch amtliche DWD-Warnungen melden</label>
+      <label class="check"><input type="checkbox" id="setAuto"> Standort beim Start automatisch ermitteln</label>
+      <label>Radar-Deckkraft
+        <input type="range" id="setOpacity" min="0.2" max="1" step="0.05">
+      </label>
+      <div class="row">
+        <button type="button" id="btnTestNotify" class="secondary">Test-Benachrichtigung</button>
+      </div>
+      <div class="row end">
+        <button value="close">Fertig</button>
+      </div>
+    </form>
+  </dialog>
+
+  <div id="toast" class="toast" hidden></div>
+
+  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" crossorigin=""></script>
+  <script src="app.js"></script>
+</body>
+</html>
