@@ -1,0 +1,142 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta name="theme-color" content="#0b5cab">
+  <meta name="description" content="Wetter-App mit DWD-Stationsdaten, 12-Stunden-Verlauf (Modell wählbar), Warnungen, Regenradar und Satellitenbild">
+  <title>Wetter</title>
+  <link rel="manifest" href="manifest.webmanifest">
+  <link rel="icon" href="icons/icon-192.png">
+  <link rel="apple-touch-icon" href="icons/icon-192.png">
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" crossorigin="">
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <header class="topbar">
+    <div class="loc">
+      <div class="loc-name" id="locName">Kein Standort</div>
+      <div class="loc-sub" id="locSub">Standort ermitteln oder suchen</div>
+    </div>
+    <div class="actions">
+      <button id="btnLocate" title="Standort ermitteln" aria-label="Standort ermitteln">📍</button>
+      <button id="btnSearch" title="Ort suchen" aria-label="Ort suchen">🔍</button>
+      <button id="btnRefresh" title="Aktualisieren" aria-label="Aktualisieren">↻</button>
+      <button id="btnSettings" title="Einstellungen" aria-label="Einstellungen">⚙️</button>
+    </div>
+  </header>
+
+  <main class="content">
+    <!-- 1. Aktuell -->
+    <section class="card now">
+      <div class="now-main">
+        <div class="now-icon" id="nowIcon">–</div>
+        <div>
+          <div class="now-temp" id="nowTemp">– °C</div>
+          <div class="now-desc" id="nowDesc">–</div>
+        </div>
+      </div>
+      <div class="now-details small" id="nowDetails"></div>
+      <div class="small muted" id="nowStation"></div>
+    </section>
+
+    <!-- 2. 12-Stunden-Verlauf mit Modell-Umschalter -->
+    <section class="card">
+      <div class="chart-head">
+        <h3>Die nächsten 12 Stunden</h3>
+        <select id="modelSelect" aria-label="Wettermodell"></select>
+      </div>
+      <div class="small muted model-info" id="modelInfo"></div>
+      <div id="chart" class="chart" aria-label="Temperaturverlauf, Niederschlag und Sonnenschein"></div>
+      <div class="small muted" id="chartInfo"></div>
+    </section>
+
+    <!-- 3. Warnungen -->
+    <section id="warnings" class="warnings" aria-live="polite"></section>
+
+    <!-- 4. Radar / Satellit -->
+    <section class="card mapcard">
+      <div class="map-head">
+        <h3 id="mapTitle">Regenradar</h3>
+        <div class="seg" role="tablist">
+          <button id="tabRadar" class="active" role="tab">Radar</button>
+          <button id="tabSat" role="tab">Satellit</button>
+          <button id="tabBoth" role="tab">Beides</button>
+        </div>
+      </div>
+      <div id="rainHint" class="rainhint small"></div>
+      <div id="map"></div>
+      <div class="map-foot small">
+        <span id="mapTime" class="mono">–</span>
+        <span class="legend" id="radarLegend">
+          <i style="background:#9fd3ff"></i>schwach
+          <i style="background:#2f7fff"></i>mäßig
+          <i style="background:#f5c400"></i>stark
+          <i style="background:#e0282e"></i>Starkregen
+        </span>
+      </div>
+    </section>
+
+    <footer class="small muted foot">
+      Wetterdaten, Warnungen &amp; Radar: <a href="https://www.dwd.de/" target="_blank" rel="noopener">Deutscher Wetterdienst</a>
+      über <a href="https://brightsky.dev/" target="_blank" rel="noopener">Bright Sky</a> und
+      <a href="https://www.dwd.de/DE/leistungen/geodienste/geodienste.html" target="_blank" rel="noopener">DWD-Geodienste</a>.
+      Andere Wettermodelle: <a href="https://open-meteo.com/" target="_blank" rel="noopener">Open-Meteo</a> (CC BY 4.0) mit Daten von
+      DWD, ECMWF, KNMI, Météo-France, NOAA und UK Met Office.
+      Satellit: <a href="https://view.eumetsat.int/" target="_blank" rel="noopener">EUMETSAT</a>.
+      Karte: © GeoBasis-DE / <a href="https://www.bkg.bund.de" target="_blank" rel="noopener">BKG</a> <span id="bkgYear"></span>
+      <a href="https://creativecommons.org/licenses/by/4.0/" target="_blank" rel="noopener">CC BY 4.0</a>.
+      Ortssuche: Open-Meteo, Ortsnamen: <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noopener">OpenStreetMap</a>.
+    </footer>
+  </main>
+
+  <dialog id="dlgSearch">
+    <form id="searchForm">
+      <h3>Ort suchen</h3>
+      <input type="text" id="searchInput" placeholder="z. B. Erlangen, 91052 oder 49.59, 11.00" autocomplete="off">
+      <ul id="searchResults" class="results"></ul>
+      <div class="row end">
+        <button type="button" class="secondary" id="btnCloseSearch">Schließen</button>
+        <button type="submit">Suchen</button>
+      </div>
+    </form>
+  </dialog>
+
+  <dialog id="dlgSettings">
+    <form method="dialog">
+      <h3>Einstellungen</h3>
+      <label>Hintergrundkarte
+        <select id="setBasemap">
+          <option value="bm_grau">basemap.de Grau (amtlich)</option>
+          <option value="bm_farbe">basemap.de Farbe (amtlich)</option>
+          <option value="osm">OpenStreetMap</option>
+        </select>
+      </label>
+      <label>Satellitenbild
+        <select id="setSat">
+          <option value="auto">automatisch (tagsüber Echtfarben, nachts Infrarot)</option>
+          <option value="vis">immer Echtfarben</option>
+          <option value="ir">immer Infrarot</option>
+        </select>
+      </label>
+      <label>Aktualisierung
+        <select id="setInterval">
+          <option value="5">alle 5 Minuten</option>
+          <option value="10">alle 10 Minuten</option>
+          <option value="15">alle 15 Minuten</option>
+          <option value="30">alle 30 Minuten</option>
+        </select>
+      </label>
+      <label class="check"><input type="checkbox" id="setNotify"> Benachrichtigen, wenn Regen naht (DWD-Radarvorhersage)</label>
+      <label class="check"><input type="checkbox" id="setWarnNotify"> Benachrichtigen bei neuen DWD-Warnungen</label>
+      <label class="check"><input type="checkbox" id="setAuto"> Standort beim Start automatisch ermitteln</label>
+      <div class="row end"><button value="close">Fertig</button></div>
+    </form>
+  </dialog>
+
+  <div id="toast" class="toast" hidden></div>
+
+  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" crossorigin=""></script>
+  <script src="app.js"></script>
+</body>
+</html>
