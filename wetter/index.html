@@ -4,12 +4,16 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
   <meta name="theme-color" content="#0b5cab">
-  <meta name="description" content="Wetter-App mit DWD-Stationsdaten, 12-Stunden-Verlauf (Modell wählbar), Warnungen, Regenradar und Satellitenbild">
+  <meta name="description" content="Wetter-App: DWD-Station, Verlauf bis 10 Tage mit Modellwahl, DWD-Warnungen, Regenradar, Satellit und Wind">
+  <meta name="mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <meta name="apple-mobile-web-app-title" content="Wetter">
   <title>Wetter</title>
   <link rel="manifest" href="manifest.webmanifest">
-  <link rel="icon" href="icons/icon-192.png">
-  <link rel="apple-touch-icon" href="icons/icon-192.png">
-  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" crossorigin="">
+  <link rel="icon" type="image/png" href="icons/icon-192.png">
+  <link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
+  <link rel="stylesheet" href="vendor/leaflet/leaflet.css">
   <link rel="stylesheet" href="style.css">
 </head>
 <body>
@@ -19,34 +23,40 @@
       <div class="loc-sub" id="locSub">Standort ermitteln oder suchen</div>
     </div>
     <div class="actions">
-      <button id="btnLocate" title="Standort ermitteln" aria-label="Standort ermitteln">📍</button>
-      <button id="btnSearch" title="Ort suchen" aria-label="Ort suchen">🔍</button>
-      <button id="btnRefresh" title="Aktualisieren" aria-label="Aktualisieren">↻</button>
-      <button id="btnSettings" title="Einstellungen" aria-label="Einstellungen">⚙️</button>
+      <button id="btnInstall" title="App installieren" aria-label="App installieren" hidden></button>
+      <button id="btnLocate" title="Standort ermitteln" aria-label="Standort ermitteln"></button>
+      <button id="btnSearch" title="Ort suchen" aria-label="Ort suchen"></button>
+      <button id="btnRefresh" title="Aktualisieren" aria-label="Aktualisieren"></button>
+      <button id="btnSettings" title="Einstellungen" aria-label="Einstellungen"></button>
     </div>
   </header>
+  <div id="offline" class="offline" hidden>Offline – es werden die zuletzt gespeicherten Daten angezeigt.</div>
 
   <main class="content">
     <!-- 1. Aktuell -->
     <section class="card now">
       <div class="now-main">
-        <div class="now-icon" id="nowIcon">–</div>
+        <div class="now-icon" id="nowIcon"></div>
         <div>
           <div class="now-temp" id="nowTemp">– °C</div>
           <div class="now-desc" id="nowDesc">–</div>
         </div>
       </div>
       <div class="now-details small" id="nowDetails"></div>
-      <div class="small muted" id="nowStation"></div>
+      <button class="station-btn small" id="btnStation" type="button">
+        <span id="stationIco"></span><span id="nowStation">Station wird ermittelt …</span><span id="stationChevron"></span>
+      </button>
     </section>
 
-    <!-- 2. 12-Stunden-Verlauf mit Modell-Umschalter -->
+    <!-- 2. Verlauf -->
     <section class="card">
       <div class="chart-head">
-        <h3>Die nächsten 12 Stunden</h3>
+        <h3 id="chartTitle">Die nächsten 12 Stunden</h3>
         <select id="modelSelect" aria-label="Wettermodell"></select>
       </div>
+      <div class="seg range" id="rangeSeg" role="tablist" aria-label="Zeitraum"></div>
       <div class="small muted model-info" id="modelInfo"></div>
+      <div id="fallbackNote" class="note small" hidden></div>
       <div id="chart" class="chart" aria-label="Temperaturverlauf, Niederschlag und Sonnenschein"></div>
       <div class="small muted" id="chartInfo"></div>
     </section>
@@ -54,7 +64,7 @@
     <!-- 3. Warnungen -->
     <section id="warnings" class="warnings" aria-live="polite"></section>
 
-    <!-- 4. Radar / Satellit -->
+    <!-- 4. Karte -->
     <section class="card mapcard">
       <div class="map-head">
         <h3 id="mapTitle">Regenradar</h3>
@@ -62,10 +72,12 @@
           <button id="tabRadar" class="active" role="tab">Radar</button>
           <button id="tabSat" role="tab">Satellit</button>
           <button id="tabBoth" role="tab">Beides</button>
+          <button id="tabWind" role="tab">Wind</button>
         </div>
       </div>
       <div id="rainHint" class="rainhint small"></div>
       <div id="map"></div>
+      <div id="windy" class="windy" hidden></div>
       <div class="map-foot small">
         <span id="mapTime" class="mono">–</span>
         <span class="legend" id="radarLegend">
@@ -81,15 +93,18 @@
       Wetterdaten, Warnungen &amp; Radar: <a href="https://www.dwd.de/" target="_blank" rel="noopener">Deutscher Wetterdienst</a>
       über <a href="https://brightsky.dev/" target="_blank" rel="noopener">Bright Sky</a> und
       <a href="https://www.dwd.de/DE/leistungen/geodienste/geodienste.html" target="_blank" rel="noopener">DWD-Geodienste</a>.
-      Andere Wettermodelle: <a href="https://open-meteo.com/" target="_blank" rel="noopener">Open-Meteo</a> (CC BY 4.0) mit Daten von
-      DWD, ECMWF, KNMI, Météo-France, NOAA und UK Met Office.
-      Satellit: <a href="https://view.eumetsat.int/" target="_blank" rel="noopener">EUMETSAT</a>.
+      Weitere Modelle: <a href="https://open-meteo.com/" target="_blank" rel="noopener">Open-Meteo</a> (CC BY 4.0)
+      bzw. die Anbieter mit eigenem API-Key.
+      Satellit: <a href="https://view.eumetsat.int/" target="_blank" rel="noopener">EUMETSAT</a> (CC BY 4.0).
+      Wind: <a href="https://www.windy.com/" target="_blank" rel="noopener">Windy.com</a>.
       Karte: © GeoBasis-DE / <a href="https://www.bkg.bund.de" target="_blank" rel="noopener">BKG</a> <span id="bkgYear"></span>
       <a href="https://creativecommons.org/licenses/by/4.0/" target="_blank" rel="noopener">CC BY 4.0</a>.
       Ortssuche: Open-Meteo, Ortsnamen: <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noopener">OpenStreetMap</a>.
+      <span id="appVersion"></span>
     </footer>
   </main>
 
+  <!-- Ortssuche -->
   <dialog id="dlgSearch">
     <form id="searchForm">
       <h3>Ort suchen</h3>
@@ -102,9 +117,22 @@
     </form>
   </dialog>
 
+  <!-- Stationsauswahl -->
+  <dialog id="dlgStation">
+    <div>
+      <h3>DWD-Wetterstation wählen</h3>
+      <p class="small muted">Stationen mit aktuellen Messwerten im Umkreis von 60 km. Die Auswahl gilt für die aktuellen Werte oben.</p>
+      <ul id="stationList" class="results"></ul>
+      <div class="row end"><button type="button" class="secondary" id="btnCloseStation">Schließen</button></div>
+    </div>
+  </dialog>
+
+  <!-- Einstellungen -->
   <dialog id="dlgSettings">
     <form method="dialog">
       <h3>Einstellungen</h3>
+
+      <h4>Karte</h4>
       <label>Hintergrundkarte
         <select id="setBasemap">
           <option value="bm_grau">basemap.de Grau (amtlich)</option>
@@ -115,10 +143,18 @@
       <label>Satellitenbild
         <select id="setSat">
           <option value="auto">automatisch (tagsüber Echtfarben, nachts Infrarot)</option>
-          <option value="vis">immer Echtfarben</option>
-          <option value="ir">immer Infrarot</option>
+          <option value="day">immer Echtfarben</option>
+          <option value="night">immer Infrarot</option>
         </select>
       </label>
+      <details class="small">
+        <summary>Satelliten-Ebenen manuell festlegen</summary>
+        <label>Tag-Ebene <input type="text" id="setSatDay" placeholder="automatisch, z. B. mtg_fd:rgb_truecolour"></label>
+        <label>Nacht-Ebene <input type="text" id="setSatNight" placeholder="automatisch"></label>
+        <div class="muted" id="satFound"></div>
+      </details>
+
+      <h4>Aktualisierung &amp; Hinweise</h4>
       <label>Aktualisierung
         <select id="setInterval">
           <option value="5">alle 5 Minuten</option>
@@ -130,13 +166,25 @@
       <label class="check"><input type="checkbox" id="setNotify"> Benachrichtigen, wenn Regen naht (DWD-Radarvorhersage)</label>
       <label class="check"><input type="checkbox" id="setWarnNotify"> Benachrichtigen bei neuen DWD-Warnungen</label>
       <label class="check"><input type="checkbox" id="setAuto"> Standort beim Start automatisch ermitteln</label>
+
+      <h4>API-Keys (optional)</h4>
+      <p class="small muted">Mit einem eigenen Key erscheinen weitere Anbieter in der Modellauswahl. Die Keys werden nur auf diesem Gerät gespeichert und nur an den jeweiligen Anbieter gesendet.</p>
+      <div id="keyFields"></div>
+
+      <h4>App</h4>
+      <div class="row">
+        <button type="button" id="btnInstall2" class="secondary">App installieren</button>
+        <button type="button" id="btnTestNotify" class="secondary">Test-Benachrichtigung</button>
+      </div>
+      <p class="small muted" id="installHint"></p>
       <div class="row end"><button value="close">Fertig</button></div>
     </form>
   </dialog>
 
   <div id="toast" class="toast" hidden></div>
 
-  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" crossorigin=""></script>
+  <script src="vendor/leaflet/leaflet.js"></script>
+  <script src="icons.js"></script>
   <script src="app.js"></script>
 </body>
 </html>
