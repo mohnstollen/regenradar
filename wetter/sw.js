@@ -1,20 +1,19 @@
 /* Service Worker – Wetter-App
- * App-Dateien: zuerst Netz, sonst Cache (Updates sofort sichtbar, offline lauffähig)
- * Wetterdaten (Bright Sky, Open-Meteo): zuerst Netz, offline letzte Antwort
- *   x-sw-time  = Zeitpunkt des ursprünglichen Abrufs (für die Altersanzeige)
- *   x-sw-cache = Antwort stammt aus dem Offline-Speicher
+ * App-Dateien + Leaflet (unpkg): zuerst Netz, sonst Cache (offline lauffähig)
+ * Wetter-/Pollendaten (Bright Sky, Open-Meteo, DWD-Pollen): zuerst Netz, offline letzte Antwort
+ *   x-sw-time  = Zeitpunkt des ursprünglichen Abrufs, x-sw-cache = Antwort aus dem Offline-Speicher
  * Karten, Radar, Satellit, Windy, Anbieter mit API-Key: nur Netz
  */
-const VERSION = 'wetter-v3.1.0';
+const VERSION = 'wetter-v3.2.0';
 const SHELL = ['./', './index.html', './style.css', './app.js', './icons.js', './manifest.webmanifest',
-  './vendor/leaflet/leaflet.js', './vendor/leaflet/leaflet.css',
-  './vendor/leaflet/images/marker-icon.png', './vendor/leaflet/images/marker-icon-2x.png', './vendor/leaflet/images/marker-shadow.png',
-  './vendor/leaflet/images/layers.png', './vendor/leaflet/images/layers-2x.png',
+  'https://unpkg.com/leaflet@1.9.4/dist/leaflet.js', 'https://unpkg.com/leaflet@1.9.4/dist/leaflet.css',
+  'https://unpkg.com/leaflet@1.9.4/dist/images/marker-icon.png', 'https://unpkg.com/leaflet@1.9.4/dist/images/marker-icon-2x.png',
+  'https://unpkg.com/leaflet@1.9.4/dist/images/marker-shadow.png', 'https://unpkg.com/leaflet@1.9.4/dist/images/layers.png',
   './icons/icon-192.png', './icons/icon-512.png', './icons/icon-maskable-512.png', './icons/apple-touch-icon.png', './icons/badge-96.png'];
-const DATA_HOSTS = ['api.brightsky.dev', 'api.open-meteo.com', 'geocoding-api.open-meteo.com'];
+const DATA_HOSTS = ['api.brightsky.dev', 'api.open-meteo.com', 'geocoding-api.open-meteo.com', 'air-quality-api.open-meteo.com', 'opendata.dwd.de'];
 
 self.addEventListener('install', e => {
-  e.waitUntil(caches.open(VERSION).then(c => Promise.allSettled(SHELL.map(u => c.add(u)))));
+  e.waitUntil(caches.open(VERSION).then(c => Promise.allSettled(SHELL.map(u => c.add(new Request(u, { mode: u.startsWith('http') ? 'cors' : 'same-origin' }))))));
   self.skipWaiting();
 });
 self.addEventListener('activate', e => {
@@ -27,9 +26,9 @@ async function withHeaders(res, extra) {
 self.addEventListener('fetch', e => {
   const req = e.request; if (req.method !== 'GET') return;
   const u = new URL(req.url);
-  if (u.origin === location.origin) {
+  if (u.origin === location.origin || u.hostname === 'unpkg.com') {
     e.respondWith(fetch(req).then(r => { if (r.ok) { const c = r.clone(); caches.open(VERSION).then(x => x.put(req, c)); } return r; })
-      .catch(() => caches.match(req, { ignoreSearch: true }).then(r => r || caches.match('./index.html'))));
+      .catch(() => caches.match(req, { ignoreSearch: true }).then(r => r || (u.origin === location.origin ? caches.match('./index.html') : Response.error()))));
     return;
   }
   if (DATA_HOSTS.includes(u.hostname) && !u.pathname.startsWith('/radar')) {

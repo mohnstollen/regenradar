@@ -4,7 +4,7 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
   <meta name="theme-color" content="#0b5cab">
-  <meta name="description" content="Wetter-App: DWD-Station, Textprognose, Verlauf bis 10 Tage mit Modellwahl, DWD-Warnungen, Regenradar, Satellit und Wind">
+  <meta name="description" content="Wetter-App: DWD-Station, Textprognose, Verlauf bis 10 Tage mit Modellwahl, DWD-Warnungen, Radar, Satellit, Wind und Pollenflug">
   <meta name="mobile-web-app-capable" content="yes">
   <meta name="apple-mobile-web-app-capable" content="yes">
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
@@ -13,18 +13,19 @@
   <link rel="manifest" href="manifest.webmanifest">
   <link rel="icon" type="image/png" href="icons/icon-192.png">
   <link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
-  <link rel="stylesheet" href="vendor/leaflet/leaflet.css">
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" crossorigin="">
   <link rel="stylesheet" href="style.css">
 </head>
 <body>
   <header class="topbar">
-    <div class="loc">
-      <div class="loc-name" id="locName">Kein Standort</div>
-      <div class="loc-sub" id="locSub">Standort ermitteln oder suchen</div>
-    </div>
+    <button class="loc" id="btnPlaces" type="button" title="Orte und Favoriten">
+      <span class="loc-name"><span id="locName">Kein Standort</span><span id="locChevron"></span></span>
+      <span class="loc-sub" id="locSub">Standort ermitteln oder suchen</span>
+    </button>
     <div class="actions">
       <button id="btnInstall" title="App installieren" aria-label="App installieren" hidden></button>
-      <button id="btnLocate" title="Standort ermitteln" aria-label="Standort ermitteln"></button>
+      <button id="btnFav" title="Als Favorit speichern" aria-label="Als Favorit speichern"></button>
+      <button id="btnLocate" title="Mein Standort (GPS)" aria-label="Mein Standort"></button>
       <button id="btnSearch" title="Ort suchen" aria-label="Ort suchen"></button>
       <button id="btnRefresh" title="Aktualisieren" aria-label="Aktualisieren"></button>
       <button id="btnSettings" title="Einstellungen" aria-label="Einstellungen"></button>
@@ -33,7 +34,7 @@
   <div id="offline" class="offline" hidden>Offline – es werden die zuletzt gespeicherten Daten angezeigt.</div>
 
   <main class="content">
-	<!-- 4. Warnungen -->
+    <!-- 0. Warnungen (nur sichtbar, wenn es welche gibt) -->
     <section id="warnings" class="warnings" aria-live="polite"></section>
 
     <!-- 1. Aktuell -->
@@ -73,7 +74,7 @@
       <div class="small muted" id="chartInfo"></div>
     </section>
 
-    <!-- 5. Karte -->
+    <!-- 4. Karte -->
     <section class="card mapcard">
       <div class="map-head">
         <h3 id="mapTitle">Regenradar</h3>
@@ -98,10 +99,23 @@
       </div>
     </section>
 
+    <!-- 5. Pollenflug -->
+    <section class="card pollen" id="pollenCard">
+      <div class="chart-head">
+        <h3><span id="pollenIco"></span> Pollenflug</h3>
+        <button type="button" class="linkbtn small" id="btnPollenCfg">Pollenarten wählen</button>
+      </div>
+      <div id="pollenBody" class="small muted">Lade Pollenvorhersage …</div>
+      <div class="pscale small" id="pollenScale"></div>
+      <div class="small muted" id="pollenInfo"></div>
+    </section>
+
     <footer class="small muted foot">
       Wetterdaten, Warnungen &amp; Radar: <a href="https://www.dwd.de/" target="_blank" rel="noopener">Deutscher Wetterdienst</a>
       über <a href="https://brightsky.dev/" target="_blank" rel="noopener">Bright Sky</a> und
       <a href="https://www.dwd.de/DE/leistungen/geodienste/geodienste.html" target="_blank" rel="noopener">DWD-Geodienste</a>.
+      Pollen: <a href="https://www.dwd.de/pollenflug" target="_blank" rel="noopener">DWD Pollenflug-Gefahrenindex</a>
+      (außerhalb Deutschlands: Open-Meteo / CAMS).
       Weitere Modelle: <a href="https://open-meteo.com/" target="_blank" rel="noopener">Open-Meteo</a> (CC BY 4.0)
       bzw. die Anbieter mit eigenem API-Key.
       Satellit: <a href="https://view.eumetsat.int/" target="_blank" rel="noopener">EUMETSAT</a> (CC BY 4.0).
@@ -109,10 +123,25 @@
       Karte: © GeoBasis-DE / <a href="https://www.bkg.bund.de" target="_blank" rel="noopener">BKG</a> <span id="bkgYear"></span>
       <a href="https://creativecommons.org/licenses/by/4.0/" target="_blank" rel="noopener">CC BY 4.0</a>.
       Ortssuche: Open-Meteo, Ortsnamen: <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noopener">OpenStreetMap</a>.
-      Sonnenauf-/-untergang berechnet (NOAA-Verfahren).
+      Sonnenauf-/-untergang berechnet.
       <span id="appVersion"></span>
     </footer>
   </main>
+
+  <!-- Orte & Favoriten -->
+  <dialog id="dlgPlaces">
+    <div>
+      <h3>Orte</h3>
+      <div class="row">
+        <button type="button" id="btnPlacesGps" class="secondary"></button>
+        <button type="button" id="btnPlacesSearch" class="secondary"></button>
+      </div>
+      <h4>Favoriten</h4>
+      <ul id="favList" class="results favs"></ul>
+      <p class="small muted" id="favHint">Tippe oben auf den Stern, um den angezeigten Ort zu speichern.</p>
+      <div class="row end"><button type="button" class="secondary" id="btnClosePlaces">Schließen</button></div>
+    </div>
+  </dialog>
 
   <dialog id="dlgSearch">
     <form id="searchForm">
@@ -129,10 +158,25 @@
   <dialog id="dlgStation">
     <div>
       <h3>DWD-Wetterstation wählen</h3>
-      <p class="small muted">Stationen mit aktuellen Messwerten im Umkreis von 60 km. Die Auswahl gilt für die aktuellen Werte und Sonnenauf-/-untergang oben.</p>
+      <p class="small muted">Stationen mit aktuellen Messwerten im Umkreis von 60 km. Die Auswahl gilt für die aktuellen Werte und Sonnenauf-/-untergang oben und wird mit dem Favoriten gespeichert.</p>
       <ul id="stationList" class="results"></ul>
       <div class="row end"><button type="button" class="secondary" id="btnCloseStation">Schließen</button></div>
     </div>
+  </dialog>
+
+  <!-- Pollen-Einstellungen -->
+  <dialog id="dlgPollen">
+    <form method="dialog">
+      <h3>Pollenflug</h3>
+      <p class="small muted">Nur die gewählten Pollenarten werden angezeigt.</p>
+      <div id="pollenChecks" class="checks"></div>
+      <div class="row"><button type="button" class="secondary" id="btnPollenAll">Alle</button><button type="button" class="secondary" id="btnPollenNone">Keine</button></div>
+      <label>DWD-Vorhersagegebiet
+        <select id="setPollenRegion"></select>
+      </label>
+      <label class="check"><input type="checkbox" id="setPollenHideZero"> Pollenarten ohne Belastung ausblenden</label>
+      <div class="row end"><button value="close">Fertig</button></div>
+    </form>
   </dialog>
 
   <dialog id="dlgSettings">
@@ -172,7 +216,7 @@
       </label>
       <label class="check"><input type="checkbox" id="setNotify"> Benachrichtigen, wenn Regen naht (DWD-Radarvorhersage)</label>
       <label class="check"><input type="checkbox" id="setWarnNotify"> Benachrichtigen bei neuen DWD-Warnungen</label>
-      <label class="check"><input type="checkbox" id="setAuto"> Standort beim Start automatisch ermitteln</label>
+      <label class="check"><input type="checkbox" id="setAuto"> Beim Start den GPS-Standort verwenden (sonst zuletzt angezeigten Ort)</label>
 
       <h4>API-Keys (optional)</h4>
       <p class="small muted">Mit einem eigenen Key erscheinen weitere Anbieter in der Modellauswahl. Die Keys werden nur auf diesem Gerät gespeichert und nur an den jeweiligen Anbieter gesendet.</p>
@@ -190,7 +234,7 @@
 
   <div id="toast" class="toast" hidden></div>
 
-  <script src="vendor/leaflet/leaflet.js"></script>
+  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" crossorigin=""></script>
   <script src="icons.js"></script>
   <script src="app.js"></script>
 </body>

@@ -1,20 +1,22 @@
-/* Wetter-App (PWA) – Version 3.1
+/* Wetter-App (PWA) – Version 3.2
+ * Warnungen:  Bright Sky /alerts – ganz oben, nur sichtbar, wenn es Warnungen gibt
  * Aktuell:    Bright Sky /current_weather – nächste oder gewählte DWD-Station (/sources)
- * Sonne:      Sonnenauf-/-untergang lokal berechnet (NOAA-Verfahren) für Station bzw. Standort
+ * Sonne:      Sonnenauf-/-untergang lokal berechnet
  * Text:       Tagesprognose in Worten aus DWD ICON-D2 (Open-Meteo)
- * Verlauf:    12 h … 10 Tage; Temperatur, Niederschlag, Wind (Pfeil + km/h), Sonnenschein
- *             Modelle: Open-Meteo (ICON-D2 Standard), DWD MOSMIX (Bright Sky), Anbieter mit API-Key.
- *             Reicht ein Modell nicht weit genug → automatisch DWD MOSMIX.
- * Warnungen:  Bright Sky /alerts
- * Karte:      DWD-Radar (WMS), EUMETSAT-Satellit (WMS, MTG), Windy-Einbettung (Wind)
+ * Verlauf:    12 h … 10 Tage; Temperatur, Niederschlag, Wind, Sonnenschein; Modell wählbar
+ * Karte:      DWD-Radar (WMS), EUMETSAT-Satellit (WMS, MTG), Windy-Einbettung
+ * Pollen:     DWD Pollenflug-Gefahrenindex (s31fg.json), außerhalb DE: Open-Meteo Air Quality (CAMS)
+ * Favoriten:  beliebig viele Orte inkl. gewählter Station, umbenennen, sortieren, löschen
  */
 'use strict';
-const APP_VERSION = '3.1.0';
+const APP_VERSION = '3.2.0';
 
 // ---------- Endpunkte ----------
 const BS = 'https://api.brightsky.dev';
 const OM = 'https://api.open-meteo.com/v1/forecast';
 const OM_META = 'https://api.open-meteo.com/data';
+const OM_AQ = 'https://air-quality-api.open-meteo.com/v1/air-quality';
+const DWD_POLLEN = 'https://opendata.dwd.de/climate_environment/health/alerts/s31fg.json';
 const DWD_WMS = 'https://maps.dwd.de/geoserver/dwd/wms';
 const DWD_RADAR = 'dwd:Niederschlagsradar';
 const SAT_WMS = 'https://view.eumetsat.int/geoserver/wms';
@@ -45,7 +47,6 @@ const KEY_PROVIDERS = {
 };
 
 // ---------- Modelle ----------
-// meta: Datensatz-Name für den Open-Meteo-Modellstatus (Zeitpunkt des letzten Modelllaufs)
 const MODELS = [
   { key: 'icon_d2', src: 'om', group: 'DWD', name: 'DWD ICON-D2 (2 km)', maxH: 48, meta: 'dwd_icon_d2', info: 'DWD-Rohmodell, 2,2 km · alle 3 h neu · bis +48 h' },
   { key: 'mosmix', src: 'bs', group: 'DWD', name: 'DWD MOSMIX', maxH: 240, info: 'DWD · an Messstationen statistisch korrigierte Punktvorhersage · bis 10 Tage' },
@@ -65,13 +66,38 @@ const MODELS = [
 ];
 const MOSMIX = MODELS.find(m => m.key === 'mosmix');
 
+// ---------- Pollen ----------
+// k = Schlüssel im DWD-JSON, om = Variable bei Open-Meteo (nur 6 Arten in Europa)
+const POLLEN = [
+  { k: 'Hasel', name: 'Hasel' }, { k: 'Erle', name: 'Erle', om: 'alder_pollen' }, { k: 'Esche', name: 'Esche' },
+  { k: 'Birke', name: 'Birke', om: 'birch_pollen' }, { k: 'Graeser', name: 'Gräser', om: 'grass_pollen' },
+  { k: 'Roggen', name: 'Roggen' }, { k: 'Beifuss', name: 'Beifuß', om: 'mugwort_pollen' }, { k: 'Ambrosia', name: 'Ambrosia', om: 'ragweed_pollen' }
+];
+// DWD-Vorhersagegebiete mit ungefährem Mittelpunkt (für die automatische Zuordnung)
+const POLLEN_REGIONS = [
+  [11, 'Inseln und Marschen', 54.4, 8.8], [12, 'Geest, Schleswig-Holstein und Hamburg', 54.1, 9.8], [20, 'Mecklenburg-Vorpommern', 53.8, 12.6],
+  [31, 'Westl. Niedersachsen/Bremen', 52.8, 7.8], [32, 'Östl. Niedersachsen', 52.6, 10.3], [41, 'Rhein.-Westfäl. Tiefland', 51.6, 7.0],
+  [42, 'Ostwestfalen', 51.9, 8.8], [43, 'Mittelgebirge NRW', 51.0, 7.9], [50, 'Brandenburg und Berlin', 52.4, 13.4],
+  [61, 'Tiefland Sachsen-Anhalt', 52.2, 11.8], [62, 'Harz', 51.7, 10.8], [71, 'Tiefland Thüringen', 51.2, 11.0],
+  [72, 'Mittelgebirge Thüringen', 50.6, 10.9], [81, 'Tiefland Sachsen', 51.3, 13.3], [82, 'Mittelgebirge Sachsen', 50.6, 13.0],
+  [91, 'Nordhessen und hess. Mittelgebirge', 50.9, 9.4], [92, 'Rhein-Main', 50.0, 8.6], [101, 'Rhein, Pfalz, Nahe und Mosel', 49.8, 7.6],
+  [102, 'Mittelgebirgsbereich Rheinland-Pfalz', 50.4, 7.4], [103, 'Saarland', 49.4, 6.95], [111, 'Oberrhein und unteres Neckartal', 48.7, 8.1],
+  [112, 'Hohenlohe/mittlerer Neckar/Oberschwaben', 48.6, 9.6], [113, 'Mittelgebirge Baden-Württemberg', 48.1, 8.4],
+  [121, 'Allgäu/Oberbayern/Bay. Wald', 47.8, 11.6], [122, 'Donauniederungen', 48.6, 11.9],
+  [123, 'Bayern nördl. der Donau, o. Bayr. Wald, o. Mainfranken', 49.65, 11.55], [124, 'Mainfranken', 49.85, 9.75]
+];
+const PSTEP = { '-1': null, '0': 0, '0-1': 0.5, '1': 1, '1-2': 1.5, '2': 2, '2-3': 2.5, '3': 3 };
+const PTXT = ['keine', 'keine bis gering', 'gering', 'gering bis mittel', 'mittel', 'mittel bis hoch', 'hoch'];
+const PCOL = ['#c8e6c9', '#e6ee9c', '#fff176', '#ffd54f', '#ffb74d', '#ff8a65', '#e53935'];
+
 const DEFAULTS = {
-  loc: null, station: null, basemap: 'bm_grau', sat: 'auto', satDay: '', satNight: '', intervalMin: 10,
-  notify: false, warnNotify: true, autoLocate: true, mapMode: 'radar', model: 'icon_d2', rangeH: 12, keys: {}
+  loc: null, station: null, favs: [], basemap: 'bm_grau', sat: 'auto', satDay: '', satNight: '', intervalMin: 10,
+  notify: false, warnNotify: true, autoLocate: true, mapMode: 'radar', model: 'icon_d2', rangeH: 12, keys: {},
+  pollen: POLLEN.map(p => p.k), pollenRegion: 'auto', pollenHideZero: false
 };
 let S = (() => {
-  try { const s = Object.assign({}, DEFAULTS, JSON.parse(localStorage.getItem(LS) || '{}')); s.keys = s.keys || {}; return s; }
-  catch { return { ...DEFAULTS, keys: {} }; }
+  try { const s = Object.assign({}, DEFAULTS, JSON.parse(localStorage.getItem(LS) || '{}')); s.keys = s.keys || {}; s.favs = Array.isArray(s.favs) ? s.favs : []; return s; }
+  catch { return { ...DEFAULTS, keys: {}, favs: [] }; }
 })();
 const save = () => localStorage.setItem(LS, JSON.stringify(S));
 
@@ -102,11 +128,10 @@ function whenTxt(ms) {
 let toastT;
 function toast(msg, ms = 4000, action) {
   const t = $('#toast'); t.innerHTML = ''; const sp = document.createElement('span'); sp.textContent = msg; t.appendChild(sp);
-  if (action) { const b = document.createElement('button'); b.textContent = action.label; b.onclick = action.fn; t.appendChild(b); }
+  if (action) { const b = document.createElement('button'); b.textContent = action.label; b.onclick = () => { t.hidden = true; action.fn(); }; t.appendChild(b); }
   t.hidden = false; clearTimeout(toastT); toastT = setTimeout(() => t.hidden = true, ms);
 }
 let offlineHits = 0;
-// liefert { data, at } – at = Zeitpunkt, zu dem die Daten tatsächlich abgerufen wurden (auch aus dem Offline-Cache)
 async function fetchJSON(url, opts = {}) {
   let r;
   try { r = await fetch(url, { cache: 'no-store', ...opts }); }
@@ -140,7 +165,6 @@ function sunElevation(lat, lon, date = new Date()) {
   const gmst = (18.697374558 + 24.06570982441908 * d) % 24, ha = rad((gmst * 15 + lon) % 360) - ra;
   return deg(Math.asin(Math.sin(rad(lat)) * Math.sin(dec) + Math.cos(rad(lat)) * Math.cos(dec) * Math.cos(ha)));
 }
-// Sonnenauf-/-untergang (Sonnenaufgangsgleichung, Refraktion −0,833°); Genauigkeit ca. ±1 min
 function sunTimes(dayMs, lat, lon) {
   const noon = new Date(dayMs); noon.setHours(12, 0, 0, 0);
   const jd = noon.getTime() / 86400000 + 2440587.5;
@@ -156,10 +180,10 @@ function sunTimes(dayMs, lat, lon) {
   if (cw > 1) return { polar: 'night' };
   if (cw < -1) return { polar: 'day' };
   const w = deg(Math.acos(cw)) / 360;
-  return { rise: toMs(Jt - w), set: toMs(Jt + w), noon: toMs(Jt) };
+  return { rise: toMs(Jt - w), set: toMs(Jt + w) };
 }
 function renderSun() {
-  const p = S.station?.lat != null ? { lat: S.station.lat, lon: S.station.lon, name: `Station ${S.station.name}` } : S.loc ? { ...S.loc, name: S.loc.name } : null;
+  const p = S.station?.lat != null ? { lat: S.station.lat, lon: S.station.lon, name: `Station ${S.station.name}` } : S.loc ? { ...S.loc } : null;
   const el = $('#sunRow'); if (!p) { el.innerHTML = ''; return; }
   const now = Date.now(); let st = sunTimes(now, p.lat, p.lon), label = '';
   if (st.set && now > st.set) { st = sunTimes(now + 24 * HOUR, p.lat, p.lon); label = ' (morgen)'; }
@@ -173,7 +197,6 @@ function renderSun() {
 // ---------- 1. Aktuelles Wetter ----------
 const ICON_TXT = { 'clear-day': 'Sonnig', 'clear-night': 'Klar', 'partly-cloudy-day': 'Teilweise bewölkt', 'partly-cloudy-night': 'Teilweise bewölkt', cloudy: 'Bewölkt', fog: 'Nebel', wind: 'Windig', rain: 'Regen', sleet: 'Schneeregen', snow: 'Schnee', hail: 'Hagel', thunderstorm: 'Gewitter' };
 const COND = { fog: 'Nebel', rain: 'Regen', sleet: 'Schneeregen', snow: 'Schnee', hail: 'Hagel', thunderstorm: 'Gewitter' };
-
 async function loadCurrent(lat, lon) {
   let d, fallback = false;
   if (S.station?.wmo) {
@@ -202,7 +225,6 @@ async function loadCurrent(lat, lon) {
   $('#btnStation').classList.toggle('chosen', !!S.station);
   if (fallback) toast(`Station ${S.station.name} liefert gerade keine Werte – zeige nächstgelegene.`);
 }
-
 async function openStationDialog() {
   if (!S.loc) { openSearch(); return; }
   const ul = $('#stationList'); ul.innerHTML = '<li class="muted small">Lade Stationen …</li>';
@@ -220,7 +242,7 @@ async function openStationDialog() {
       const li = document.createElement('li'), b = document.createElement('button'); b.type = 'button';
       if (sel) b.className = 'sel';
       b.innerHTML = `<b>${esc(label)}</b><br><span class="small muted">${esc(sub)}</span>`;
-      b.onclick = () => { fn(); $('#dlgStation').close(); renderSun(); refresh(); };
+      b.onclick = () => { fn(); syncFavStation(); $('#dlgStation').close(); renderSun(); refresh(); };
       li.appendChild(b); ul.appendChild(li);
     };
     add('Automatisch', 'immer die nächstgelegene Station mit aktuellen Werten', !S.station, () => { S.station = null; save(); drawStationMarker(); });
@@ -232,7 +254,7 @@ async function openStationDialog() {
   } catch (e) { ul.innerHTML = `<li class="muted small">Stationen nicht abrufbar (${esc(e.message)})</li>`; }
 }
 
-// ---------- Modellstatus (Zeitpunkt des Modelllaufs) ----------
+// ---------- Modellstatus ----------
 const metaCache = {};
 async function modelRun(m) {
   if (!m.meta) return null;
@@ -245,7 +267,6 @@ async function modelRun(m) {
 }
 
 // ---------- Vorhersage-Abruf ----------
-// Zeile: { t, temp, mm, pEnd, sun (min|null), wind (km/h), wdir (°), gust (km/h), code, cloud }
 const ms2kmh = (v) => v == null ? null : v * 3.6;
 async function fcMosmix(lat, lon, H) {
   const now = new Date(); now.setMinutes(0, 0, 0);
@@ -253,7 +274,7 @@ async function fcMosmix(lat, lon, H) {
   const { data: d, at } = await fetchJSON(`${BS}/weather?lat=${lat.toFixed(4)}&lon=${lon.toFixed(4)}&date=${now.toISOString()}&last_date=${to.toISOString()}&tz=Europe/Berlin`);
   const rows = (d.weather || []).map(w => {
     const t = new Date(w.timestamp).getTime();
-    return { t, temp: w.temperature, mm: w.precipitation ?? 0, pEnd: t, sun: w.sunshine ?? null, wind: w.wind_speed, wdir: w.wind_direction, gust: w.wind_gust_speed, cloud: w.cloud_cover };
+    return { t, temp: w.temperature, mm: w.precipitation ?? 0, pEnd: t, sun: w.sunshine ?? null, wind: w.wind_speed, wdir: w.wind_direction, gust: w.wind_gust_speed };
   });
   return { rows, at, run: null };
 }
@@ -311,8 +332,7 @@ async function fetchModel(m, lat, lon, H) {
   if (m.src === 'om') return fcOpenMeteo(lat, lon, H, m);
   const key = (S.keys[m.prov] || '').trim();
   if (!key) throw new Error(`kein API-Key für ${KEY_PROVIDERS[m.prov].name}`);
-  const r = await KEY_FETCH[m.prov](lat, lon, key);
-  return { ...r, run: null };
+  return { ...(await KEY_FETCH[m.prov](lat, lon, key)), run: null };
 }
 
 // ---------- 2. Verlauf ----------
@@ -355,9 +375,9 @@ function drawChart(rows, t0, t1, model) {
   const W = Math.max(300, Math.round($('#chart').clientWidth || 680)), PADL = 34, PADR = 16;
   const plotW = W - PADL - PADR, pph = plotW / H;
   const TOP = 22, TH = W < 500 ? 120 : 140;
-  const XL = TOP + TH + 15;                       // Stunden-Zeile
+  const XL = TOP + TH + 15;
   const hourStep = H <= 12 ? null : [3, 6, 12].find(s => s * pph >= 24);
-  const XD = H > 12 && hourStep ? XL + 15 : XL;   // Tages-Zeile (rückt hoch, wenn keine Stunden passen)
+  const XD = H > 12 && hourStep ? XL + 15 : XL;
   const RAIN_Y = XD + 32, RAIN_H = 34;
   const WIND_Y = RAIN_Y + RAIN_H + 26, WIND_H = 34;
   const SUN_Y = WIND_Y + WIND_H + 30, SUN_H = 22;
@@ -374,7 +394,6 @@ function drawChart(rows, t0, t1, model) {
   for (let v = Math.ceil(tmin / tickStep) * tickStep; v <= tmax; v += tickStep)
     svg += `<line class="grid" x1="${PADL}" x2="${W - PADR}" y1="${y(v)}" y2="${y(v)}"/><text class="rowlbl" x="${PADL - 5}" y="${y(v) + 3}" text-anchor="end">${v}°</text>`;
 
-  // ---- Zeitachse: Abstände richten sich nach der verfügbaren Breite ----
   if (H <= 12) {
     const step = 3 * pph >= 48 ? 3 : 6;
     for (let t = t0; t <= t1; t += step * HOUR) {
@@ -382,20 +401,16 @@ function drawChart(rows, t0, t1, model) {
       svg += `<line class="grid" x1="${x(t)}" x2="${x(t)}" y1="${TOP}" y2="${TOP + TH}"/><text class="xlbl" x="${anchor === 'start' ? x(t) - 4 : x(t)}" y="${XL}" style="text-anchor:${anchor}">${t === t0 ? 'jetzt' : new Date(t).getHours() + ' Uhr'}</text>`;
     }
   } else {
-    // Tagesgrenzen
     for (let t = dayStart(t0) + 24 * HOUR; t < t1; t += 24 * HOUR) svg += `<line class="daysep" x1="${x(t)}" x2="${x(t)}" y1="${TOP}" y2="${XD + 4}"/>`;
-    // Stunden: kleinster Abstand (3/6/12 h), bei dem die Zahlen mind. 24 px auseinander liegen
-    const step = hourStep;
-    if (step) {
+    if (hourStep) {
       svg += `<text class="rowlbl" x="${PADL - 5}" y="${XL}" text-anchor="end">Uhr</text>`;
       for (let t = Math.ceil(t0 / HOUR) * HOUR; t <= t1; t += HOUR) {
         const hr = new Date(t).getHours();
-        if (hr === 0 || hr % step) continue;
+        if (hr === 0 || hr % hourStep) continue;
         if (x(t) < PADL + 6 || x(t) > W - PADR - 6) continue;
         svg += `<line class="grid" x1="${x(t)}" x2="${x(t)}" y1="${TOP}" y2="${TOP + TH}"/><text class="xlbl" x="${x(t)}" y="${XL}">${hr}</text>`;
       }
     }
-    // Tagesnamen (zentriert im sichtbaren Tagesabschnitt, Länge je nach Platz)
     for (let t = dayStart(t0); t < t1; t += 24 * HOUR) {
       const a = Math.max(t, t0), b = Math.min(t + 24 * HOUR, t1), span = x(b) - x(a);
       if (span < 14) continue;
@@ -406,7 +421,6 @@ function drawChart(rows, t0, t1, model) {
     }
   }
 
-  // ---- Temperaturkurve ----
   const pts = rows.map(r => [x(r.t), y(r.temp)]);
   const path = pts.map((p, i) => { if (!i) return `M${p[0]},${p[1]}`; const p0 = pts[i - 1], cx = (p0[0] + p[0]) / 2; return `C${cx},${p0[1]} ${cx},${p[1]} ${p[0]},${p[1]}`; }).join(' ');
   svg += `<defs><clipPath id="clipT"><rect x="${PADL}" y="0" width="${plotW}" height="${TOP + TH}"/></clipPath></defs>`;
@@ -427,8 +441,6 @@ function drawChart(rows, t0, t1, model) {
     }
   }
 
-  // ---- Zeitblöcke für Balken und Wind ----
-  // Blockgröße so wählen, dass ein Block mind. ca. 22 px breit ist
   const B = H <= 12 ? (pph >= 22 ? 1 : 2) : [3, 6, 12, 24].find(b => b * pph >= 22) || 24;
   const buckets = [];
   if (B === 24) { for (let t = dayStart(t0); t < t1; t += 24 * HOUR) buckets.push([Math.max(t, t0), Math.min(t + 24 * HOUR, t1)]); }
@@ -454,44 +466,34 @@ function drawChart(rows, t0, t1, model) {
   const blk = B === 24 ? 'je Tag' : B > 1 ? `je ${B} h` : '';
   const hasSun = stat.some(s => s.sun != null), hasWind = stat.some(s => s.wind != null);
   const sunHrs = B >= 6;
-
-  // Niederschlag
   svg += `<text class="rowlbl" x="0" y="${RAIN_Y - 16}">Niederschlag (mm${blk ? ' ' + blk : ''})</text>`;
   const rmax = Math.max(1, ...stat.map(s => s.mm));
-  // Wind
   svg += `<text class="rowlbl" x="0" y="${WIND_Y - 8}">Wind (km/h${blk ? ', Mittel ' + blk : ''}) · Pfeil zeigt Zugrichtung${hasWind ? '' : ' – nicht geliefert'}</text>`;
-  // Sonne
   svg += `<text class="rowlbl" x="0" y="${SUN_Y - 8}">Sonnenschein (${sunHrs ? 'h' : 'min'}${blk ? ' ' + blk : ''})${hasSun ? '' : ' – vom Modell nicht geliefert'}</text>`;
-
   const windCol = (k) => k < 12 ? '#7a8a9c' : k < 29 ? '#1c7ed6' : k < 50 ? '#e67700' : k < 75 ? '#e03131' : '#9c36b5';
   for (const s of stat) {
     const cx = (x(s.a) + x(s.b)) / 2, bw = Math.min((x(s.b) - x(s.a)) * 0.72, 34);
     const showTxt = (x(s.b) - x(s.a)) >= 17;
-    // Niederschlag
     const rh = s.mm > 0 ? Math.max(2, s.mm / rmax * RAIN_H) : 0;
     svg += `<line class="grid" x1="${cx - bw / 2}" x2="${cx + bw / 2}" y1="${RAIN_Y + RAIN_H}" y2="${RAIN_Y + RAIN_H}"/>`;
     if (rh) { svg += `<rect class="rbar" x="${cx - bw / 2}" y="${RAIN_Y + RAIN_H - rh}" width="${bw}" height="${rh}" rx="2"/>`; if (showTxt && s.mm >= 0.05) svg += `<text class="rval" x="${cx}" y="${RAIN_Y + RAIN_H - rh - 3}">${fmt(s.mm, s.mm >= 10 ? 0 : 1)}</text>`; }
-    // Wind
     if (s.wind != null) {
       const col = windCol(s.wind), sc = Math.min(1.25, 0.8 + s.wind / 60);
       if (s.wdir != null) svg += `<g transform="translate(${cx} ${WIND_Y + 8}) rotate(${(s.wdir + 180) % 360}) scale(${sc})"><title>${fmt(s.wind, 0)} km/h aus ${dirName(s.wdir)}${s.gust != null ? `, Böen ${fmt(s.gust, 0)} km/h` : ''}</title><path d="M0,-8 L5.5,6 L0,3 L-5.5,6 Z" fill="${col}"/></g>`;
       if (showTxt) svg += `<text class="wval" x="${cx}" y="${WIND_Y + 28}">${fmt(s.wind, 0)}</text>`;
       if (showTxt && s.gust != null && s.gust >= 60) svg += `<text class="gval" x="${cx}" y="${WIND_Y + 39}">B ${fmt(s.gust, 0)}</text>`;
     }
-    // Sonne
     const maxSun = s.hrs * 60, sv = Math.min(s.sun ?? 0, maxSun), sh = sv > 0 ? Math.max(2, sv / maxSun * SUN_H) : 0;
     svg += `<line class="grid" x1="${cx - bw / 2}" x2="${cx + bw / 2}" y1="${SUN_Y + SUN_H}" y2="${SUN_Y + SUN_H}"/>`;
     if (sh) svg += `<rect class="sbar" x="${cx - bw / 2}" y="${SUN_Y + SUN_H - sh}" width="${bw}" height="${sh}" rx="2"/>`;
     if (sv >= 1 && showTxt) svg += `<text class="sval" x="${cx}" y="${SUN_Y + SUN_H + 12}">${sunHrs ? fmt(sv / 60, 1) : fmt(sv, 0)}</text>`;
   }
-
   $('#chart').innerHTML = `<svg viewBox="0 0 ${W} ${HGT}" width="${W}" height="${HGT}" role="img">${svg}</svg>`;
   const rain = stat.reduce((a, s) => a + s.mm, 0), sun = stat.reduce((a, s) => a + (s.sun || 0), 0);
   const gmax = Math.max(0, ...stat.map(s => s.gust ?? 0));
   const sunTxt = !hasSun ? '–' : sun >= 60 ? `${fmt(sun / 60, 1)} h` : `${fmt(sun, 0)} min`;
   $('#chartInfo').textContent = `Summe: ${fmt(rain)} mm Niederschlag · ${sunTxt} Sonne · Min ${fmt(Math.min(...temps), 0)}° / Max ${fmt(Math.max(...temps), 0)}°${gmax ? ` · Böen bis ${fmt(gmax, 0)} km/h` : ''}`;
 }
-
 function initForecastControls() {
   const sel = $('#modelSelect'), groups = {};
   for (const m of MODELS) (groups[m.group] ||= []).push(m);
@@ -536,7 +538,6 @@ async function loadDayText(lat, lon) {
   $('#daySource').textContent = `Textprognose nach ${model.name}${run ? ` · Modelllauf ${whenTxt(run)}` : ''} · abgerufen ${hhmm(res.at)} Uhr`;
   $('#dayCard').hidden = false;
 }
-
 function buildDayText(rows, now) {
   const tomorrow = new Date(now).getHours() >= 20;
   const base = dayStart(now) + (tomorrow ? 24 * HOUR : 0);
@@ -557,7 +558,6 @@ function buildDayText(rows, now) {
     });
   }
   if (!periods.length) return null;
-
   const wetType = (p) => {
     const has = (f) => p.codes.some(f);
     if (has(c => c >= 95)) return 'thunder';
@@ -570,24 +570,20 @@ function buildDayText(rows, now) {
     return 'rain';
   };
   const WET = { thunder: 'mit Gewittern', snow: 'mit Schneefall', freezing: 'mit gefrierendem Regen (Glättegefahr)', shower: 'mit Schauern', heavy: 'mit kräftigem Regen', rain: 'mit Regen', drizzle: 'mit Nieselregen' };
-  // Bewölkungsklasse: 0 klar, 1 gering, 2 wolkig, 3 bedeckt, 4 Nebel
   const skyCls = (p) => p.fog ? 4 : (p.cloud ?? 50) < 20 ? 0 : (p.cloud ?? 50) < 45 ? 1 : (p.cloud ?? 50) < 75 ? 2 : 3;
   const SKY_DAY = ['sonnig', 'heiter', 'wolkig', 'bedeckt', 'neblig'], SKY_NIGHT = ['klar', 'überwiegend klar', 'wolkig', 'bedeckt', 'neblig'];
   for (const p of periods) p.wet = wetType(p);
   const anyWet = periods.some(p => p.wet);
   for (const p of periods) p.key = `${skyCls(p)}|${p.wet}`;
-  // gleiche Abschnitte zusammenfassen (z. B. „sonnig“ am Tag und „klar“ am Abend)
   const segs = [];
   for (const p of periods) { const last = segs[segs.length - 1]; if (last && last.key === p.key) last.k += p.k; else segs.push({ k: p.k, key: p.key, p }); }
   for (const sg of segs) {
-    const c = skyCls(sg.p), word = sg.k === 'A' ? SKY_NIGHT[c] : SKY_DAY[c];
-    sg.desc = sg.p.wet ? `${word} ${WET[sg.p.wet]}` : anyWet ? `${word} und trocken` : word;
+    const c = skyCls(sg.p), w = sg.k === 'A' ? SKY_NIGHT[c] : SKY_DAY[c];
+    sg.desc = sg.p.wet ? `${w} ${WET[sg.p.wet]}` : anyWet ? `${w} und trocken` : w;
   }
   const FIRST = { V: ' Vormittag', N: ' Nachmittag', A: ' Abend', VN: ' tagsüber', NA: ' ab dem Nachmittag', VNA: '' };
   const NEXT = { N: 'am Nachmittag', A: 'am Abend', NA: 'ab dem Nachmittag' };
   let text = segs.length === 1 ? `${word} ${segs[0].desc}` : `${word}${FIRST[segs[0].k] ?? ''} ${segs[0].desc}` + segs.slice(1).map(s => `, ${NEXT[s.k] ?? ''} ${s.desc}`).join('');
-
-  // Wind
   const f = periods[0], l = periods[periods.length - 1];
   if (periods.length > 1 && l.wind - f.wind >= 8 && l.wind >= 15) text += ' bei auffrischendem Wind';
   else if (periods.length > 1 && f.wind - l.wind >= 8 && f.wind >= 15) text += ' bei nachlassendem Wind';
@@ -598,31 +594,27 @@ function buildDayText(rows, now) {
   if (gmax >= 75) text += ` Sturmböen bis ${fmt(gmax, 0)} km/h.`;
   else if (gmax >= 60) text += ` Stürmische Böen bis ${fmt(gmax, 0)} km/h.`;
   else if (gmax >= 45) text += ` Windböen bis ${fmt(gmax, 0)} km/h.`;
-
-  // Temperatur
   const dayP = periods.filter(p => p.k !== 'A');
   if (dayP.length) text += ` Höchstwert ${fmt(Math.max(...dayP.map(p => p.tmax)), 0)} °C`;
   else text += ` Temperaturen um ${fmt((l.tmax + l.tmin) / 2, 0)} °C`;
   const night = rows.filter(r => r.t > base + 24 * HOUR && r.t <= base + 31 * HOUR);
   if (night.length >= 3) text += `, in der Nacht ${fmt(Math.min(...night.map(r => r.temp)), 0)} °C`;
   text += '.';
-
-  // passendes Symbol: nasser Abschnitt mit meistem Niederschlag, sonst Tagesmitte
   const wetP = periods.filter(p => p.wet).sort((a, b) => b.mm - a.mm)[0];
   const main = wetP || periods.find(p => p.k === 'N') || periods[0];
   const ICON_OF = { thunder: 'thunderstorm', snow: 'snow', freezing: 'sleet', shower: 'showers', heavy: 'rain', rain: 'rain', drizzle: 'rain' };
-  let icon = main.wet ? ICON_OF[main.wet] : main.fog ? 'fog' : (main.cloud ?? 50) < 20 ? (main.k === 'A' ? 'clear-night' : 'clear-day') : (main.cloud ?? 50) < 75 ? (main.k === 'A' ? 'partly-cloudy-night' : 'partly-cloudy-day') : 'cloudy';
+  const icon = main.wet ? ICON_OF[main.wet] : main.fog ? 'fog' : (main.cloud ?? 50) < 20 ? (main.k === 'A' ? 'clear-night' : 'clear-day') : (main.cloud ?? 50) < 75 ? (main.k === 'A' ? 'partly-cloudy-night' : 'partly-cloudy-day') : 'cloudy';
   return { text: text.replace(/\s+/g, ' ').trim(), icon };
 }
 
-// ---------- 3. Warnungen ----------
+// ---------- Warnungen (ganz oben, nur wenn vorhanden) ----------
 const sevRank = (s) => ({ minor: 1, moderate: 2, severe: 3, extreme: 4 }[s] || 0);
 async function loadWarnings(lat, lon) {
   const d = await getJSON(`${BS}/alerts?lat=${lat.toFixed(4)}&lon=${lon.toFixed(4)}&tz=Europe/Berlin`);
   const list = (d.alerts || []).sort((a, b) => sevRank(b.severity) - sevRank(a.severity));
   const box = $('#warnings'); box.innerHTML = '';
+  if (!list.length) return;
   const place = d.location?.name ? ` für ${d.location.name}` : '';
-  if (!list.length) { box.innerHTML = `<div class="warn-none">${I('check')}Keine amtlichen DWD-Warnungen${esc(place)}</div>`; return; }
   const dt = (s) => s ? new Date(s).toLocaleString('de-DE', { weekday: 'short', hour: '2-digit', minute: '2-digit' }) : '';
   for (const a of list) {
     const heat = /HITZE/i.test(`${a.event_de} ${a.headline_de}`);
@@ -644,9 +636,158 @@ async function loadWarnings(lat, lon) {
   }
 }
 
-// ---------- 4. Karte ----------
-let map, marker, stMarker, radarLayer, satLayer, activeBase = null;
+// ---------- Pollen ----------
+let dwdPollen = null; // { ts, data }
+const isGermany = () => !S.loc || (S.loc.lat > 47.2 && S.loc.lat < 55.1 && S.loc.lon > 5.8 && S.loc.lon < 15.1 && (!S.loc.sub || /deutschland|germany/i.test(S.loc.sub)));
+function autoPollenRegion(lat, lon) {
+  let best = null, bd = Infinity;
+  for (const r of POLLEN_REGIONS) { const d = distKm(lat, lon, r[2], r[3]); if (d < bd) { bd = d; best = r; } }
+  return best;
+}
+const regionOf = (id) => POLLEN_REGIONS.find(r => r[0] === Number(id));
+async function getDwdPollen() {
+  if (dwdPollen && Date.now() - dwdPollen.ts < 60 * 60000) return dwdPollen;
+  const { data, at } = await fetchJSON(DWD_POLLEN);
+  dwdPollen = { ts: Date.now(), at, data }; return dwdPollen;
+}
+// "2026-10-12 11:00 Uhr" → ms (Ortszeit)
+const parseDwdTime = (s) => { const m = String(s || '').match(/(\d{4})-(\d{2})-(\d{2})\s+(\d{1,2}):(\d{2})/); return m ? new Date(+m[1], m[2] - 1, +m[3], +m[4], +m[5]).getTime() : null; };
+async function loadPollen(lat, lon) {
+  const sel = POLLEN.filter(p => S.pollen.includes(p.k));
+  if (!sel.length) { renderPollen(null, [], 'Keine Pollenart gewählt – über „Pollenarten wählen“ festlegen.'); return; }
+  if (isGermany()) {
+    try {
+      const { data, at } = await getDwdPollen();
+      const reg = S.pollenRegion !== 'auto' && regionOf(S.pollenRegion) ? regionOf(S.pollenRegion) : autoPollenRegion(lat, lon);
+      const entry = (data.content || []).find(c => (c.partregion_id > 0 ? c.partregion_id : c.region_id) === reg[0]);
+      if (!entry) throw new Error('Gebiet nicht im DWD-Datensatz');
+      const upd = parseDwdTime(data.last_update);
+      const shift = upd ? Math.max(0, Math.round((dayStart(Date.now()) - dayStart(upd)) / 86400000)) : 0;
+      const keys = ['today', 'tomorrow', 'dayafter_to'].slice(shift);
+      const days = keys.map((_, i) => dayLabel(dayStart(Date.now()) + i * 24 * HOUR));
+      const rows = sel.map(p => ({ name: p.name, vals: keys.map(k => PSTEP[entry.Pollen?.[p.k]?.[k]] ?? null) }));
+      renderPollen(days, rows, `DWD Pollenflug-Gefahrenindex · Gebiet ${reg[1]}${S.pollenRegion === 'auto' ? ' (automatisch)' : ''} · Stand ${upd ? whenTxt(upd) : data.last_update} · abgerufen ${hhmm(at)} Uhr`);
+      return;
+    } catch (e) { console.warn('DWD-Pollen:', e.message); }
+  }
+  // Rückfall: Open-Meteo (CAMS), Konzentration in Körnern/m³ → Stufen
+  const om = sel.filter(p => p.om);
+  const q = new URLSearchParams({ latitude: lat.toFixed(4), longitude: lon.toFixed(4), hourly: (om.length ? om : POLLEN.filter(p => p.om)).map(p => p.om).join(','), timezone: 'auto', timeformat: 'unixtime', forecast_days: '3' });
+  const { data: d, at } = await fetchJSON(`${OM_AQ}?${q}`);
+  const h = d.hourly || {}, t = (h.time || []).map(x => x * 1000);
+  const base = dayStart(Date.now());
+  const days = [0, 1, 2].map(i => dayLabel(base + i * 24 * HOUR));
+  const level = (k, v) => {   // grobe Einteilung je Pollenart (Körner/m³, Tagesmaximum)
+    if (v == null) return null;
+    const th = k === 'grass_pollen' ? [1, 5, 15, 30, 50, 100] : k === 'ragweed_pollen' || k === 'mugwort_pollen' ? [1, 3, 6, 10, 20, 40] : [1, 10, 30, 50, 100, 200];
+    let s = 0; for (const x of th) if (v >= x) s += 0.5; return s;
+  };
+  const rows = sel.map(p => ({
+    name: p.name,
+    vals: [0, 1, 2].map(i => {
+      if (!p.om) return null;
+      const vs = t.map((x, j) => x >= base + i * 24 * HOUR && x < base + (i + 1) * 24 * HOUR ? h[p.om]?.[j] : null).filter(v => v != null);
+      return vs.length ? level(p.om, Math.max(...vs)) : null;
+    })
+  }));
+  renderPollen(days, rows, `Open-Meteo / CAMS (Modell, 11 km) · Stufen aus Pollenkonzentration abgeleitet · abgerufen ${hhmm(at)} Uhr${isGermany() ? ' · DWD-Daten derzeit nicht abrufbar' : ''}`);
+}
+const dayLabel = (t) => { const today = dayStart(Date.now()); return t === today ? 'Heute' : t === today + 24 * HOUR ? 'Morgen' : `${WD[new Date(t).getDay()]} ${new Date(t).getDate()}.`; };
+function renderPollen(days, rows, info) {
+  const body = $('#pollenBody');
+  $('#pollenScale').innerHTML = PTXT.map((t, i) => i % 2 === 0 ? `<span><i style="background:${PCOL[i]}"></i>${t}</span>` : '').join('') + '<span class="muted">(Zwischenstufen möglich)</span>';
+  $('#pollenInfo').textContent = days ? info : '';
+  if (!days) { body.className = 'small muted'; body.textContent = info; return; }
+  let list = rows;
+  if (S.pollenHideZero) list = rows.filter(r => r.vals.some(v => v != null && v > 0));
+  const allZero = rows.every(r => r.vals.every(v => v == null || v === 0));
+  if (!list.length) { body.className = 'small muted'; body.textContent = 'Für die gewählten Pollenarten wird keine Belastung erwartet.'; return; }
+  const cell = (v) => {
+    if (v == null) return '<td><div class="pna" title="keine Vorhersage">–</div></td>';
+    const i = Math.round(v * 2);
+    const bar = [1, 2, 3, 4, 5, 6].map(k => `<i style="${k <= i ? `background:${PCOL[i]}` : ''}"></i>`).join('');
+    return `<td><div class="pcell" title="${PTXT[i]}"><div class="pbar">${bar}</div><div class="plabel">${PTXT[i]}</div></div></td>`;
+  };
+  body.className = '';
+  body.innerHTML = `<table class="ptable"><thead><tr><th></th>${days.map(d => `<th>${esc(d)}</th>`).join('')}</tr></thead><tbody>`
+    + list.map(r => `<tr><td class="pname">${esc(r.name)}</td>${r.vals.map(cell).join('')}</tr>`).join('') + '</tbody></table>'
+    + (allZero ? '<div class="small muted">Derzeit keine Belastung – außerhalb der Blütezeit der gewählten Pollenarten.</div>' : '');
+}
+function initPollenDialog() {
+  $('#pollenIco').innerHTML = I('flower');
+  $('#pollenChecks').innerHTML = POLLEN.map(p => `<label class="check"><input type="checkbox" value="${p.k}"> ${esc(p.name)}</label>`).join('');
+  const sync = () => $('#pollenChecks').querySelectorAll('input').forEach(c => c.checked = S.pollen.includes(c.value));
+  const changed = () => { S.pollen = [...$('#pollenChecks').querySelectorAll('input:checked')].map(c => c.value); save(); reloadPollen(); };
+  $('#pollenChecks').onchange = changed;
+  $('#btnPollenAll').onclick = () => { S.pollen = POLLEN.map(p => p.k); sync(); changed(); };
+  $('#btnPollenNone').onclick = () => { S.pollen = []; sync(); changed(); };
+  const rs = $('#setPollenRegion');
+  const fillRegions = () => {
+    const auto = S.loc ? autoPollenRegion(S.loc.lat, S.loc.lon) : null;
+    rs.innerHTML = `<option value="auto">automatisch${auto ? ` (${esc(auto[1])})` : ''}</option>` + POLLEN_REGIONS.map(r => `<option value="${r[0]}">${esc(r[1])}</option>`).join('');
+    rs.value = String(S.pollenRegion);
+  };
+  rs.onchange = () => { S.pollenRegion = rs.value === 'auto' ? 'auto' : Number(rs.value); save(); reloadPollen(); };
+  $('#setPollenHideZero').checked = S.pollenHideZero;
+  $('#setPollenHideZero').onchange = (e) => { S.pollenHideZero = e.target.checked; save(); reloadPollen(); };
+  $('#btnPollenCfg').onclick = () => { sync(); fillRegions(); $('#dlgPollen').showModal(); };
+}
+function reloadPollen() { if (S.loc) loadPollen(S.loc.lat, S.loc.lon).catch(e => renderPollen(null, [], `Pollenvorhersage nicht abrufbar (${e.message}).`)); }
+
+// ---------- Favoriten ----------
+const sameLoc = (a, b) => a && b && distKm(a.lat, a.lon, b.lat, b.lon) < 1;
+const currentFav = () => S.favs.find(f => sameLoc(f, S.loc));
+function renderFavBtn() {
+  const f = currentFav();
+  $('#btnFav').innerHTML = I(f ? 'starFill' : 'star');
+  $('#btnFav').title = f ? `Favorit „${f.name}“ – antippen zum Entfernen` : 'Als Favorit speichern';
+}
+function toggleFav() {
+  if (!S.loc) { openSearch(); return; }
+  const f = currentFav();
+  if (f) {
+    const idx = S.favs.indexOf(f); S.favs.splice(idx, 1); save(); renderFavBtn();
+    toast(`„${f.name}“ aus den Favoriten entfernt.`, 6000, { label: 'Rückgängig', fn: () => { S.favs.splice(idx, 0, f); save(); renderFavBtn(); } });
+  } else {
+    S.favs.push({ id: Date.now().toString(36), name: S.loc.name, sub: S.loc.sub || '', lat: S.loc.lat, lon: S.loc.lon, station: S.station || null });
+    save(); renderFavBtn(); toast(`„${S.loc.name}“ als Favorit gespeichert.`);
+  }
+}
+function syncFavStation() { const f = currentFav(); if (f) { f.station = S.station || null; save(); } }
+function openPlaces() { renderFavList(); $('#dlgPlaces').showModal(); }
+function renderFavList(editId = null) {
+  const ul = $('#favList'); ul.innerHTML = '';
+  $('#favHint').hidden = S.favs.length > 0;
+  S.favs.forEach((f, i) => {
+    const li = document.createElement('li');
+    if (editId === f.id) {
+      const inp = document.createElement('input'); inp.type = 'text'; inp.value = f.name; inp.setAttribute('aria-label', 'Name');
+      const ok = document.createElement('button'); ok.type = 'button'; ok.className = 'ficon'; ok.innerHTML = I('ok'); ok.title = 'Speichern';
+      const done = () => { const v = inp.value.trim(); if (v) { f.name = v; save(); if (sameLoc(f, S.loc)) { S.loc.name = v; save(); renderLoc(); } } renderFavList(); };
+      ok.onclick = done; inp.onkeydown = (e) => { if (e.key === 'Enter') { e.preventDefault(); done(); } if (e.key === 'Escape') { e.preventDefault(); renderFavList(); } };
+      li.append(inp, ok); ul.appendChild(li); setTimeout(() => { inp.focus(); inp.select(); }, 0); return;
+    }
+    const main = document.createElement('button'); main.type = 'button'; main.className = 'fmain' + (sameLoc(f, S.loc) ? ' sel' : '');
+    main.innerHTML = `<span class="fname">${esc(f.name)}</span><span class="fsub">${esc(f.sub || `${fmt(f.lat, 3)}, ${fmt(f.lon, 3)}`)}${f.station ? ` · Station ${esc(f.station.name)}` : ''}</span>`;
+    main.onclick = () => { $('#dlgPlaces').close(); loadFav(f); };
+    const up = document.createElement('button'); up.type = 'button'; up.className = 'ficon'; up.innerHTML = I('up'); up.title = 'Nach oben'; up.disabled = i === 0; up.style.opacity = i === 0 ? .35 : 1;
+    up.onclick = () => { if (i > 0) { [S.favs[i - 1], S.favs[i]] = [S.favs[i], S.favs[i - 1]]; save(); renderFavList(); } };
+    const ed = document.createElement('button'); ed.type = 'button'; ed.className = 'ficon'; ed.innerHTML = I('edit'); ed.title = 'Umbenennen';
+    ed.onclick = () => renderFavList(f.id);
+    const del = document.createElement('button'); del.type = 'button'; del.className = 'ficon del'; del.innerHTML = I('trash'); del.title = 'Löschen';
+    del.onclick = () => {
+      S.favs.splice(i, 1); save(); renderFavList(); renderFavBtn();
+      toast(`„${f.name}“ gelöscht.`, 6000, { label: 'Rückgängig', fn: () => { S.favs.splice(i, 0, f); save(); renderFavList(); renderFavBtn(); } });
+    };
+    li.append(main, up, ed, del); ul.appendChild(li);
+  });
+}
+function loadFav(f) { S.station = f.station || null; setLocation(f.lat, f.lon, { name: f.name, sub: f.sub }, true); }
+
+// ---------- Karte ----------
+let map = null, marker, stMarker, radarLayer, satLayer, activeBase = null;
 const baseLayers = {};
+const hasLeaflet = () => typeof window.L !== 'undefined';
 function bkg(layer) {
   const l = L.tileLayer.wms(BKG_WMS, { layers: layer, format: 'image/png', version: '1.3.0', tileSize: 512, maxZoom: 19, attribution: BKG_ATTR });
   let err = 0;
@@ -660,6 +801,7 @@ const BASES = {
   osm: () => L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png', { maxZoom: 19, attribution: OSM_ATTR })
 };
 function setBase(key, persist = true) {
+  if (!map) return;
   if (!BASES[key]) key = 'bm_grau';
   if (activeBase === key) return;
   if (activeBase) map.removeLayer(baseLayers[activeBase]);
@@ -679,10 +821,7 @@ async function discoverSatLayers() {
     const pick = (cands, re) => cands.find(c => names.includes(c)) || names.find(n => re.test(n));
     const day = pick(['mtg_fd:rgb_geocolour', 'mtg_fd:rgb_truecolour', 'mtg_fd:rgb_naturalcolour'], /^mtg_fd:rgb_(true|natural)/i);
     const night = pick(['mtg_fd:ir105_hrfi', 'mtg_fd:ir105'], /^mtg_fd:.*ir_?105/i) || pick([], /^mtg_fd:.*ir/i);
-    if (day || night) {
-      SAT = { day: day || SAT_DEFAULT.day, night: night || day || SAT_DEFAULT.night, source: 'EUMETSAT-Katalog' };
-      localStorage.setItem(LS_SAT, JSON.stringify({ ts: Date.now(), layers: SAT }));
-    }
+    if (day || night) { SAT = { day: day || SAT_DEFAULT.day, night: night || day || SAT_DEFAULT.night, source: 'EUMETSAT-Katalog' }; localStorage.setItem(LS_SAT, JSON.stringify({ ts: Date.now(), layers: SAT })); }
   } catch { }
 }
 function satLayerName() {
@@ -693,8 +832,8 @@ function satLayerName() {
   return sunElevation(p.lat, p.lon) > 3 ? day : night;
 }
 const isDayLayer = () => satLayerName() === (S.satDay.trim() || SAT.day);
-
 function initMap() {
+  if (!hasLeaflet()) { $('#map').innerHTML = '<div class="nomap">Karte konnte nicht geladen werden (keine Verbindung zum Kartendienst). Bitte später erneut öffnen.</div>'; return; }
   map = L.map('map', { maxZoom: 14 }).setView([49.6, 11.0], 8);
   setBase(S.basemap, false);
   map.attributionControl.addAttribution('Radar: <a href="https://www.dwd.de/" target="_blank" rel="noopener">DWD</a>');
@@ -710,7 +849,6 @@ function initMap() {
     b.onclick = async () => { map.closePopup(); setLocation(e.latlng.lat, e.latlng.lng, await reverseGeocode(e.latlng.lat, e.latlng.lng)); };
     div.appendChild(b); L.popup().setLatLng(e.latlng).setContent(div).openOn(map);
   });
-  setMapMode(S.mapMode, false);
 }
 function windyUrl() {
   const p = S.loc || { lat: 49.6, lon: 11 };
@@ -728,7 +866,7 @@ function setMapMode(mode, persist = true) {
   if (wind) {
     const box = $('#windy'), url = windyUrl();
     if (!box.firstChild || box.dataset.src !== url) { box.innerHTML = `<iframe src="${url}" title="Windkarte von Windy.com" loading="lazy" allowfullscreen></iframe>`; box.dataset.src = url; }
-  } else {
+  } else if (map) {
     if (mode !== 'sat') radarLayer.addTo(map); else map.removeLayer(radarLayer);
     if (mode !== 'radar') { satLayer.setParams({ layers: satLayerName() }, true); satLayer.addTo(map); } else map.removeLayer(satLayer);
     setTimeout(() => map.invalidateSize(), 50);
@@ -744,22 +882,24 @@ function updateMapTime() {
   $('#mapTime').textContent = parts.join(' · ');
 }
 function refreshMapLayers() {
+  if (!map) return;
   const bust = { _t: Math.floor(Date.now() / 300000) };
   radarLayer.setParams(bust);
   satLayer.setParams({ ...bust, layers: satLayerName() });
 }
 function drawMarker() {
-  if (!S.loc) return;
+  if (!S.loc || !map) return;
   const ll = [S.loc.lat, S.loc.lon];
   if (!marker) marker = L.marker(ll, { title: 'Standort' }).addTo(map); else marker.setLatLng(ll);
   drawStationMarker();
 }
 function drawStationMarker() {
+  if (!map) return;
   if (stMarker) { map.removeLayer(stMarker); stMarker = null; }
   if (S.station?.lat != null) stMarker = L.circleMarker([S.station.lat, S.station.lon], { radius: 6, color: '#0b5cab', weight: 2, fillColor: '#fff', fillOpacity: 1 }).bindTooltip(`Station ${S.station.name}`).addTo(map);
 }
 
-// ---------- Regen-Hinweis (DWD-Radar inkl. 2-h-Vorhersage) ----------
+// ---------- Regen-Hinweis ----------
 const RAIN_RAW = 5, NEAR_KM = 25, LOC_KM = 1.5;
 async function inflate(b64) {
   const bin = Uint8Array.from(atob(b64), c => c.charCodeAt(0));
@@ -861,37 +1001,49 @@ async function doSearch() {
 function openSearch() { $('#searchResults').innerHTML = ''; $('#dlgSearch').showModal(); $('#searchInput').focus(); }
 function locate() {
   if (!('geolocation' in navigator)) { openSearch(); return; }
-  navigator.geolocation.getCurrentPosition(async p => setLocation(p.coords.latitude, p.coords.longitude, await reverseGeocode(p.coords.latitude, p.coords.longitude)),
-    () => { if (S.loc) toast(`Standort nicht ermittelbar – verwende „${S.loc.name}“.`); else { toast('Standort nicht ermittelbar – bitte Ort suchen.'); openSearch(); } },
-    { timeout: 15000, maximumAge: 5 * 60000 });
+  navigator.geolocation.getCurrentPosition(async p => {
+    const lat = p.coords.latitude, lon = p.coords.longitude;
+    const fav = S.favs.find(f => sameLoc(f, { lat, lon }));
+    if (fav) loadFav(fav); else { S.station = null; setLocation(lat, lon, await reverseGeocode(lat, lon)); }
+  }, () => { if (S.loc) toast(`Standort nicht ermittelbar – verwende „${S.loc.name}“.`); else { toast('Standort nicht ermittelbar – bitte Ort suchen.'); openSearch(); } },
+  { timeout: 15000, maximumAge: 5 * 60000 });
 }
-function setLocation(lat, lon, info) {
-  if (S.station?.lat != null && distKm(lat, lon, S.station.lat, S.station.lon) > 60) { S.station = null; toast('Gewählte Station liegt zu weit weg – zurück auf automatisch.'); }
+function setLocation(lat, lon, info, keepStation = false) {
+  if (!keepStation) {
+    const fav = S.favs.find(f => sameLoc(f, { lat, lon }));
+    if (fav) { S.station = fav.station || null; info = { name: fav.name, sub: fav.sub }; }
+    else if (S.station?.lat != null && distKm(lat, lon, S.station.lat, S.station.lon) > 60) { S.station = null; }
+  }
   S.loc = { lat, lon, name: info?.name || `${fmt(lat, 3)}, ${fmt(lon, 3)}`, sub: info?.sub || '' }; save();
-  renderLoc(); drawMarker(); map.setView([lat, lon], 9);
+  renderLoc(); drawMarker(); drawStationMarker(); if (map) map.setView([lat, lon], 9);
   if (S.mapMode === 'wind') setMapMode('wind', false);
   refresh();
 }
 function renderLoc() {
   $('#locName').textContent = S.loc ? S.loc.name : 'Kein Standort';
   $('#locSub').textContent = S.loc ? (S.loc.sub || `${fmt(S.loc.lat, 3)}, ${fmt(S.loc.lon, 3)}`) : 'Standort ermitteln oder suchen';
+  renderFavBtn();
 }
 
 // ---------- Aktualisierung ----------
-let busy = false;
+let busy = false, again = false;
 async function refresh() {
-  if (!S.loc || busy) return; busy = true; $('#btnRefresh').classList.add('spin');
+  if (!S.loc) return;
+  if (busy) { again = true; return; }
+  busy = true; $('#btnRefresh').classList.add('spin');
   const { lat, lon } = S.loc; offlineHits = 0;
   refreshMapLayers(); renderSun();
   await Promise.allSettled([
+    loadWarnings(lat, lon).catch(() => { $('#warnings').innerHTML = ''; }),
     loadCurrent(lat, lon).catch(e => { $('#nowStation').textContent = `Aktuelle Werte nicht abrufbar (${e.message})`; }),
     loadDayText(lat, lon).catch(() => { $('#dayCard').hidden = true; }),
     loadForecast(lat, lon).catch(showForecastError),
-    loadWarnings(lat, lon).catch(() => { $('#warnings').innerHTML = '<div class="warn-none">Warnungen derzeit nicht abrufbar</div>'; }),
-    loadRadar(lat, lon).then(renderRainHint).catch(() => renderRainHint(null))
+    loadRadar(lat, lon).then(renderRainHint).catch(() => renderRainHint(null)),
+    loadPollen(lat, lon).catch(e => renderPollen(null, [], `Pollenvorhersage nicht abrufbar (${e.message}).`))
   ]);
   $('#offline').hidden = !(offlineHits > 0 || !navigator.onLine);
   busy = false; $('#btnRefresh').classList.remove('spin');
+  if (again) { again = false; refresh(); }
 }
 let timer;
 const schedule = () => { clearInterval(timer); timer = setInterval(refresh, S.intervalMin * 60000); };
@@ -975,11 +1127,16 @@ function initPwa() {
 function init() {
   $('#bkgYear').textContent = `(${YEAR})`;
   $('#appVersion').textContent = `· Version ${APP_VERSION}`;
-  $('#btnLocate').innerHTML = I('pin'); $('#btnSearch').innerHTML = I('search'); $('#btnRefresh').innerHTML = I('refresh');
-  $('#btnSettings').innerHTML = I('gear'); $('#btnInstall').innerHTML = I('install');
+  $('#btnLocate').innerHTML = I('gps'); $('#btnSearch').innerHTML = I('search'); $('#btnRefresh').innerHTML = I('refresh');
+  $('#btnSettings').innerHTML = I('gear'); $('#btnInstall').innerHTML = I('install'); $('#locChevron').innerHTML = I('chevron');
   $('#stationIco').innerHTML = I('station'); $('#stationChevron').innerHTML = I('chevron');
+  $('#btnPlacesGps').innerHTML = `${I('gps')} Mein Standort`; $('#btnPlacesSearch').innerHTML = `${I('search')} Ort suchen`;
   $('#nowIcon').innerHTML = window.ICONS.weather('unknown');
-  initForecastControls(); initSettings(); initMap(); renderLoc(); initPwa();
+  initForecastControls(); initSettings(); initPollenDialog(); initMap(); setMapMode(S.mapMode, false); renderLoc(); initPwa();
+  $('#btnFav').onclick = toggleFav; $('#btnPlaces').onclick = openPlaces;
+  $('#btnPlacesGps').onclick = () => { $('#dlgPlaces').close(); locate(); };
+  $('#btnPlacesSearch').onclick = () => { $('#dlgPlaces').close(); openSearch(); };
+  $('#btnClosePlaces').onclick = () => $('#dlgPlaces').close();
   $('#btnLocate').onclick = locate; $('#btnSearch').onclick = openSearch; $('#btnRefresh').onclick = refresh;
   $('#btnSettings').onclick = () => { $('#satFound').textContent = `Gefunden: Tag ${SAT.day}, Nacht ${SAT.night} (${SAT.source})`; $('#dlgSettings').showModal(); };
   $('#btnCloseSearch').onclick = () => $('#dlgSearch').close();
@@ -988,7 +1145,7 @@ function init() {
   $('#tabRadar').onclick = () => setMapMode('radar'); $('#tabSat').onclick = () => setMapMode('sat');
   $('#tabBoth').onclick = () => setMapMode('both'); $('#tabWind').onclick = () => setMapMode('wind');
   discoverSatLayers().then(() => { if (S.mapMode === 'sat' || S.mapMode === 'both') setMapMode(S.mapMode, false); });
-  if (S.loc) { drawMarker(); renderSun(); map.setView([S.loc.lat, S.loc.lon], 9); refresh(); }
+  if (S.loc) { drawMarker(); renderSun(); if (map) map.setView([S.loc.lat, S.loc.lon], 9); refresh(); }
   if (S.autoLocate || !S.loc) locate();
   schedule();
   setInterval(renderSun, 10 * 60000);
