@@ -1,16 +1,20 @@
-/* Wetter-App (PWA) – Version 3
+/* Wetter-App (PWA) – Version 3.1
  * Aktuell:    Bright Sky /current_weather – nächste oder gewählte DWD-Station (/sources)
- * Verlauf:    12 h … 10 Tage; Modelle: Open-Meteo (ICON-D2 Standard), DWD MOSMIX (Bright Sky),
- *             Anbieter mit eigenem API-Key. Reicht ein Modell nicht weit genug → Rückfall auf MOSMIX.
+ * Sonne:      Sonnenauf-/-untergang lokal berechnet (NOAA-Verfahren) für Station bzw. Standort
+ * Text:       Tagesprognose in Worten aus DWD ICON-D2 (Open-Meteo)
+ * Verlauf:    12 h … 10 Tage; Temperatur, Niederschlag, Wind (Pfeil + km/h), Sonnenschein
+ *             Modelle: Open-Meteo (ICON-D2 Standard), DWD MOSMIX (Bright Sky), Anbieter mit API-Key.
+ *             Reicht ein Modell nicht weit genug → automatisch DWD MOSMIX.
  * Warnungen:  Bright Sky /alerts
  * Karte:      DWD-Radar (WMS), EUMETSAT-Satellit (WMS, MTG), Windy-Einbettung (Wind)
  */
 'use strict';
-const APP_VERSION = '3.0.0';
+const APP_VERSION = '3.1.0';
 
 // ---------- Endpunkte ----------
 const BS = 'https://api.brightsky.dev';
 const OM = 'https://api.open-meteo.com/v1/forecast';
+const OM_META = 'https://api.open-meteo.com/data';
 const DWD_WMS = 'https://maps.dwd.de/geoserver/dwd/wms';
 const DWD_RADAR = 'dwd:Niederschlagsradar';
 const SAT_WMS = 'https://view.eumetsat.int/geoserver/wms';
@@ -41,23 +45,23 @@ const KEY_PROVIDERS = {
 };
 
 // ---------- Modelle ----------
-// src: 'om' Open-Meteo, 'bs' Bright Sky (MOSMIX), 'key' Anbieter mit API-Key
+// meta: Datensatz-Name für den Open-Meteo-Modellstatus (Zeitpunkt des letzten Modelllaufs)
 const MODELS = [
-  { key: 'icon_d2', src: 'om', group: 'DWD', name: 'DWD ICON-D2 (2 km)', maxH: 48, info: 'DWD-Rohmodell, 2,2 km · alle 3 h neu · reicht bis +48 h' },
+  { key: 'icon_d2', src: 'om', group: 'DWD', name: 'DWD ICON-D2 (2 km)', maxH: 48, meta: 'dwd_icon_d2', info: 'DWD-Rohmodell, 2,2 km · alle 3 h neu · bis +48 h' },
   { key: 'mosmix', src: 'bs', group: 'DWD', name: 'DWD MOSMIX', maxH: 240, info: 'DWD · an Messstationen statistisch korrigierte Punktvorhersage · bis 10 Tage' },
-  { key: 'icon_seamless', src: 'om', group: 'DWD', name: 'DWD ICON kombiniert', maxH: 180, info: 'DWD · ICON-D2 → ICON-EU → ICON global · bis ca. 7 Tage' },
-  { key: 'ecmwf_ifs025', src: 'om', group: 'Europa', name: 'ECMWF IFS', maxH: 360, info: 'Europäisches Zentrum (ECMWF) · globales Referenzmodell · bis 15 Tage' },
-  { key: 'ecmwf_aifs025', src: 'om', group: 'Europa', name: 'ECMWF AIFS (KI-Modell)', maxH: 360, info: 'ECMWF · KI-basiertes Modell · bis 15 Tage' },
-  { key: 'knmi_harmonie_arome_europe', src: 'om', group: 'Europa', name: 'KNMI Harmonie (NL)', maxH: 60, info: 'Niederländischer Wetterdienst · hochaufgelöst · bis ca. 2,5 Tage' },
-  { key: 'meteofrance_seamless', src: 'om', group: 'Europa', name: 'Météo-France ARPEGE/AROME', maxH: 96, info: 'Französischer Wetterdienst · für Deutschland meist ARPEGE · bis 4 Tage' },
-  { key: 'ukmo_seamless', src: 'om', group: 'Weltweit', name: 'UK Met Office', maxH: 168, info: 'Britischer Wetterdienst · globales Modell · bis 7 Tage' },
-  { key: 'gfs_seamless', src: 'om', group: 'Weltweit', name: 'NOAA GFS (USA)', maxH: 384, info: 'US-Wetterdienst · globales Modell · bis 16 Tage' },
-  { key: 'best_match', src: 'om', group: 'Weltweit', name: 'Open-Meteo „Best Match“', maxH: 384, info: 'Open-Meteo wählt automatisch das beste verfügbare Modell' },
-  { key: 'k_owm', src: 'key', prov: 'owm', group: 'Mit API-Key', name: 'OpenWeatherMap', maxH: 120, info: 'OpenWeatherMap · 3-Stunden-Schritte · bis 5 Tage' },
-  { key: 'k_weatherapi', src: 'key', prov: 'weatherapi', group: 'Mit API-Key', name: 'WeatherAPI.com', maxH: 72, info: 'WeatherAPI.com · stündlich · Gratis-Tarif bis 3 Tage' },
-  { key: 'k_tomorrow', src: 'key', prov: 'tomorrow', group: 'Mit API-Key', name: 'Tomorrow.io', maxH: 120, info: 'Tomorrow.io · stündlich · bis 5 Tage' },
-  { key: 'k_pirate', src: 'key', prov: 'pirate', group: 'Mit API-Key', name: 'Pirate Weather', maxH: 168, info: 'Pirate Weather · stündlich · bis 7 Tage' },
-  { key: 'k_meteoblue', src: 'key', prov: 'meteoblue', group: 'Mit API-Key', name: 'meteoblue', maxH: 168, info: 'meteoblue (Schweiz) · stündlich inkl. Sonnenscheindauer · bis 7 Tage' }
+  { key: 'icon_seamless', src: 'om', group: 'DWD', name: 'DWD ICON kombiniert', maxH: 180, meta: 'dwd_icon', info: 'DWD · ICON-D2 → ICON-EU → ICON global · bis ca. 7 Tage' },
+  { key: 'ecmwf_ifs025', src: 'om', group: 'Europa', name: 'ECMWF IFS', maxH: 360, meta: 'ecmwf_ifs025', info: 'ECMWF · globales Referenzmodell · bis 15 Tage' },
+  { key: 'ecmwf_aifs025', src: 'om', group: 'Europa', name: 'ECMWF AIFS (KI-Modell)', maxH: 360, meta: 'ecmwf_aifs025_single', info: 'ECMWF · KI-basiertes Modell · bis 15 Tage' },
+  { key: 'knmi_harmonie_arome_europe', src: 'om', group: 'Europa', name: 'KNMI Harmonie (NL)', maxH: 60, meta: 'knmi_harmonie_arome_europe', info: 'Niederländischer Wetterdienst · bis ca. 2,5 Tage' },
+  { key: 'meteofrance_seamless', src: 'om', group: 'Europa', name: 'Météo-France ARPEGE/AROME', maxH: 96, meta: 'meteofrance_arpege_europe', info: 'Französischer Wetterdienst · bis 4 Tage' },
+  { key: 'ukmo_seamless', src: 'om', group: 'Weltweit', name: 'UK Met Office', maxH: 168, meta: 'ukmo_global_deterministic_10km', info: 'Britischer Wetterdienst · bis 7 Tage' },
+  { key: 'gfs_seamless', src: 'om', group: 'Weltweit', name: 'NOAA GFS (USA)', maxH: 384, meta: 'ncep_gfs025', info: 'US-Wetterdienst · bis 16 Tage' },
+  { key: 'best_match', src: 'om', group: 'Weltweit', name: 'Open-Meteo „Best Match“', maxH: 384, info: 'Open-Meteo wählt automatisch das beste Modell' },
+  { key: 'k_owm', src: 'key', prov: 'owm', group: 'Mit API-Key', name: 'OpenWeatherMap', maxH: 120, info: '3-Stunden-Schritte · bis 5 Tage' },
+  { key: 'k_weatherapi', src: 'key', prov: 'weatherapi', group: 'Mit API-Key', name: 'WeatherAPI.com', maxH: 72, info: 'stündlich · Gratis-Tarif bis 3 Tage' },
+  { key: 'k_tomorrow', src: 'key', prov: 'tomorrow', group: 'Mit API-Key', name: 'Tomorrow.io', maxH: 120, info: 'stündlich · bis 5 Tage' },
+  { key: 'k_pirate', src: 'key', prov: 'pirate', group: 'Mit API-Key', name: 'Pirate Weather', maxH: 168, info: 'stündlich · bis 7 Tage' },
+  { key: 'k_meteoblue', src: 'key', prov: 'meteoblue', group: 'Mit API-Key', name: 'meteoblue', maxH: 168, info: 'stündlich inkl. Sonnenscheindauer · bis 7 Tage' }
 ];
 const MOSMIX = MODELS.find(m => m.key === 'mosmix');
 
@@ -78,10 +82,22 @@ const fmt = (v, d = 1) => (v == null || isNaN(v)) ? '–' : Number(v).toLocaleSt
 const hhmm = (ms) => new Date(ms).toLocaleTimeString('de-DE', { hour: '2-digit', minute: '2-digit' });
 const DIRS = ['N', 'NO', 'O', 'SO', 'S', 'SW', 'W', 'NW'];
 const dirName = (deg) => deg == null ? '' : DIRS[Math.round((((deg % 360) + 360) % 360) / 45) % 8];
-const rad = (d) => d * Math.PI / 180;
+const rad = (d) => d * Math.PI / 180, deg = (r) => r * 180 / Math.PI;
 const esc = (s) => String(s ?? '').replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
 const WD = ['So', 'Mo', 'Di', 'Mi', 'Do', 'Fr', 'Sa'];
+const HOUR = 3600000;
+const dayStart = (t) => { const d = new Date(t); d.setHours(0, 0, 0, 0); return d.getTime(); };
 function distKm(a, b, c, d) { const x = rad(c - a), y = rad(d - b); const h = Math.sin(x / 2) ** 2 + Math.cos(rad(a)) * Math.cos(rad(c)) * Math.sin(y / 2) ** 2; return 12742 * Math.asin(Math.sqrt(h)); }
+function ageTxt(ms) {
+  const m = Math.round((Date.now() - ms) / 60000);
+  if (m < 2) return 'gerade eben'; if (m < 60) return `vor ${m} min`;
+  const h = Math.floor(m / 60); return `vor ${h} h${m % 60 >= 10 && h < 6 ? ` ${m % 60} min` : ''}`;
+}
+function whenTxt(ms) {
+  const d = new Date(ms), today = dayStart(Date.now());
+  const day = dayStart(ms) === today ? '' : dayStart(ms) === today - 24 * HOUR ? 'gestern ' : `${WD[d.getDay()]} `;
+  return `${day}${hhmm(ms)} Uhr`;
+}
 
 let toastT;
 function toast(msg, ms = 4000, action) {
@@ -90,7 +106,8 @@ function toast(msg, ms = 4000, action) {
   t.hidden = false; clearTimeout(toastT); toastT = setTimeout(() => t.hidden = true, ms);
 }
 let offlineHits = 0;
-async function getJSON(url, opts = {}) {
+// liefert { data, at } – at = Zeitpunkt, zu dem die Daten tatsächlich abgerufen wurden (auch aus dem Offline-Cache)
+async function fetchJSON(url, opts = {}) {
   let r;
   try { r = await fetch(url, { cache: 'no-store', ...opts }); }
   catch { throw new Error('keine Verbindung oder vom Anbieter blockiert (CORS)'); }
@@ -102,24 +119,55 @@ async function getJSON(url, opts = {}) {
     try { const j = await r.json(); const reason = j.reason || j.message || j.error?.message || j.error; if (reason && typeof reason === 'string') msg += ` (${reason})`; } catch { }
     throw new Error(msg);
   }
-  return r.json();
+  const at = Number(r.headers.get('x-sw-time')) || Date.now();
+  return { data: await r.json(), at };
 }
-// Cache für Anbieter mit Abrufgrenzen
+const getJSON = async (url, opts) => (await fetchJSON(url, opts)).data;
 async function cachedJSON(url, ttlMin, cacheKey) {
   const k = LS_CACHE + cacheKey;
-  try { const c = JSON.parse(localStorage.getItem(k) || 'null'); if (c && Date.now() - c.ts < ttlMin * 60000) return c.data; } catch { }
-  const data = await getJSON(url);
-  try { localStorage.setItem(k, JSON.stringify({ ts: Date.now(), data })); } catch { }
-  return data;
+  try { const c = JSON.parse(localStorage.getItem(k) || 'null'); if (c && Date.now() - c.ts < ttlMin * 60000) return { data: c.data, at: c.ts }; } catch { }
+  const res = await fetchJSON(url);
+  try { localStorage.setItem(k, JSON.stringify({ ts: res.at, data: res.data })); } catch { }
+  return res;
 }
 
+// ---------- Sonne ----------
 function sunElevation(lat, lon, date = new Date()) {
   const d = (date - Date.UTC(2000, 0, 1, 12)) / 86400000;
   const g = rad((357.529 + 0.98560028 * d) % 360), q = (280.459 + 0.98564736 * d) % 360;
   const L = rad(q + 1.915 * Math.sin(g) + 0.020 * Math.sin(2 * g)), e = rad(23.439 - 0.00000036 * d);
   const dec = Math.asin(Math.sin(e) * Math.sin(L)), ra = Math.atan2(Math.cos(e) * Math.sin(L), Math.cos(L));
   const gmst = (18.697374558 + 24.06570982441908 * d) % 24, ha = rad((gmst * 15 + lon) % 360) - ra;
-  return Math.asin(Math.sin(rad(lat)) * Math.sin(dec) + Math.cos(rad(lat)) * Math.cos(dec) * Math.cos(ha)) * 180 / Math.PI;
+  return deg(Math.asin(Math.sin(rad(lat)) * Math.sin(dec) + Math.cos(rad(lat)) * Math.cos(dec) * Math.cos(ha)));
+}
+// Sonnenauf-/-untergang (Sonnenaufgangsgleichung, Refraktion −0,833°); Genauigkeit ca. ±1 min
+function sunTimes(dayMs, lat, lon) {
+  const noon = new Date(dayMs); noon.setHours(12, 0, 0, 0);
+  const jd = noon.getTime() / 86400000 + 2440587.5;
+  const n = Math.round(jd - 2451545.0 + 0.0008);
+  const Js = n - lon / 360;
+  const M = (357.5291 + 0.98560028 * Js) % 360;
+  const C = 1.9148 * Math.sin(rad(M)) + 0.02 * Math.sin(rad(2 * M)) + 0.0003 * Math.sin(rad(3 * M));
+  const lam = (M + C + 180 + 102.9372) % 360;
+  const Jt = 2451545.0 + Js + 0.0053 * Math.sin(rad(M)) - 0.0069 * Math.sin(rad(2 * lam));
+  const dec = Math.asin(Math.sin(rad(lam)) * Math.sin(rad(23.44)));
+  const cw = (Math.sin(rad(-0.833)) - Math.sin(rad(lat)) * Math.sin(dec)) / (Math.cos(rad(lat)) * Math.cos(dec));
+  const toMs = (j) => (j - 2440587.5) * 86400000;
+  if (cw > 1) return { polar: 'night' };
+  if (cw < -1) return { polar: 'day' };
+  const w = deg(Math.acos(cw)) / 360;
+  return { rise: toMs(Jt - w), set: toMs(Jt + w), noon: toMs(Jt) };
+}
+function renderSun() {
+  const p = S.station?.lat != null ? { lat: S.station.lat, lon: S.station.lon, name: `Station ${S.station.name}` } : S.loc ? { ...S.loc, name: S.loc.name } : null;
+  const el = $('#sunRow'); if (!p) { el.innerHTML = ''; return; }
+  const now = Date.now(); let st = sunTimes(now, p.lat, p.lon), label = '';
+  if (st.set && now > st.set) { st = sunTimes(now + 24 * HOUR, p.lat, p.lon); label = ' (morgen)'; }
+  if (st.polar) { el.textContent = st.polar === 'day' ? 'Polartag – die Sonne geht nicht unter' : 'Polarnacht – die Sonne geht nicht auf'; return; }
+  const len = Math.round((st.set - st.rise) / 60000);
+  el.innerHTML = `<span title="Sonnenaufgang${label} · ${esc(p.name)}">${I('sunrise')}<b>${hhmm(st.rise)}</b></span>`
+    + `<span title="Sonnenuntergang${label} · ${esc(p.name)}">${I('sunset')}<b>${hhmm(st.set)}</b></span>`
+    + `<span class="muted" title="Tageslänge">${I('daylen')}${Math.floor(len / 60)} h ${String(len % 60).padStart(2, '0')} min${label}</span>`;
 }
 
 // ---------- 1. Aktuelles Wetter ----------
@@ -149,14 +197,12 @@ async function loadCurrent(lat, lon) {
     c.pressure_msl != null && `<span>${I('gauge')}<b>${fmt(c.pressure_msl, 0)} hPa</b></span>`
   ].filter(Boolean).join('');
   const dist = src && S.loc ? distKm(S.loc.lat, S.loc.lon, src.lat, src.lon) : null;
-  const mode = S.station ? 'gewählt' : 'nächste';
   $('#nowStation').textContent = `Station ${src?.station_name ?? '–'}${dist != null ? ` · ${fmt(dist, 0)} km` : ''} · ${hhmm(new Date(c.timestamp))} Uhr`;
-  $('#btnStation').title = `DWD-Station ${src?.station_name ?? ''} (${mode}) – antippen zum Wechseln`;
+  $('#btnStation').title = `DWD-Station ${src?.station_name ?? ''} (${S.station ? 'gewählt' : 'nächste'}) – antippen zum Wechseln`;
   $('#btnStation').classList.toggle('chosen', !!S.station);
   if (fallback) toast(`Station ${S.station.name} liefert gerade keine Werte – zeige nächstgelegene.`);
 }
 
-// Stationsauswahl
 async function openStationDialog() {
   if (!S.loc) { openSearch(); return; }
   const ul = $('#stationList'); ul.innerHTML = '<li class="muted small">Lade Stationen …</li>';
@@ -174,7 +220,7 @@ async function openStationDialog() {
       const li = document.createElement('li'), b = document.createElement('button'); b.type = 'button';
       if (sel) b.className = 'sel';
       b.innerHTML = `<b>${esc(label)}</b><br><span class="small muted">${esc(sub)}</span>`;
-      b.onclick = () => { fn(); $('#dlgStation').close(); refresh(); };
+      b.onclick = () => { fn(); $('#dlgStation').close(); renderSun(); refresh(); };
       li.appendChild(b); ul.appendChild(li);
     };
     add('Automatisch', 'immer die nächstgelegene Station mit aktuellen Werten', !S.station, () => { S.station = null; save(); drawStationMarker(); });
@@ -186,107 +232,138 @@ async function openStationDialog() {
   } catch (e) { ul.innerHTML = `<li class="muted small">Stationen nicht abrufbar (${esc(e.message)})</li>`; }
 }
 
-// ---------- 2. Verlauf ----------
-const currentModel = () => MODELS.find(m => m.key === S.model) || MODELS[0];
-const range = () => RANGES.find(r => r.h === S.rangeH) || RANGES[0];
+// ---------- Modellstatus (Zeitpunkt des Modelllaufs) ----------
+const metaCache = {};
+async function modelRun(m) {
+  if (!m.meta) return null;
+  const c = metaCache[m.meta]; if (c && Date.now() - c.ts < 10 * 60000) return c.run;
+  try {
+    const d = await getJSON(`${OM_META}/${m.meta}/static/meta.json`);
+    const run = d.last_run_initialisation_time ? d.last_run_initialisation_time * 1000 : null;
+    metaCache[m.meta] = { ts: Date.now(), run }; return run;
+  } catch { metaCache[m.meta] = { ts: Date.now(), run: null }; return null; }
+}
 
-// Zeilenformat: { t: Zeitpunkt Temperatur (ms), temp, mm, pEnd: Ende des Niederschlags-/Sonnenintervalls (ms), sun: Minuten | null }
+// ---------- Vorhersage-Abruf ----------
+// Zeile: { t, temp, mm, pEnd, sun (min|null), wind (km/h), wdir (°), gust (km/h), code, cloud }
+const ms2kmh = (v) => v == null ? null : v * 3.6;
 async function fcMosmix(lat, lon, H) {
   const now = new Date(); now.setMinutes(0, 0, 0);
-  const to = new Date(now.getTime() + (H + 1) * 3600000);
-  const d = await getJSON(`${BS}/weather?lat=${lat.toFixed(4)}&lon=${lon.toFixed(4)}&date=${now.toISOString()}&last_date=${to.toISOString()}&tz=Europe/Berlin`);
-  return (d.weather || []).map(w => { const t = new Date(w.timestamp).getTime(); return { t, temp: w.temperature, mm: w.precipitation ?? 0, pEnd: t, sun: w.sunshine ?? null }; });
-}
-async function fcOpenMeteo(lat, lon, H, model) {
-  const q = new URLSearchParams({
-    latitude: lat.toFixed(4), longitude: lon.toFixed(4), hourly: 'temperature_2m,precipitation,sunshine_duration',
-    models: model, timezone: 'auto', timeformat: 'unixtime', forecast_days: String(Math.min(16, Math.ceil(H / 24) + 1))
+  const to = new Date(now.getTime() + (H + 1) * HOUR);
+  const { data: d, at } = await fetchJSON(`${BS}/weather?lat=${lat.toFixed(4)}&lon=${lon.toFixed(4)}&date=${now.toISOString()}&last_date=${to.toISOString()}&tz=Europe/Berlin`);
+  const rows = (d.weather || []).map(w => {
+    const t = new Date(w.timestamp).getTime();
+    return { t, temp: w.temperature, mm: w.precipitation ?? 0, pEnd: t, sun: w.sunshine ?? null, wind: w.wind_speed, wdir: w.wind_direction, gust: w.wind_gust_speed, cloud: w.cloud_cover };
   });
-  const d = await getJSON(`${OM}?${q}`);
-  const h = d.hourly; if (!h?.time) return [];
+  return { rows, at, run: null };
+}
+async function omHourly(lat, lon, model, vars, days) {
+  const q = new URLSearchParams({ latitude: lat.toFixed(4), longitude: lon.toFixed(4), hourly: vars.join(','), models: model, timezone: 'auto', timeformat: 'unixtime', forecast_days: String(days) });
+  const { data: d, at } = await fetchJSON(`${OM}?${q}`);
+  const h = d.hourly || {};
   const col = (n) => h[n] ?? h[`${n}_${model}`] ?? [];
-  const T = col('temperature_2m'), P = col('precipitation'), SD = col('sunshine_duration');
-  return h.time.map((t, i) => ({ t: t * 1000, temp: T[i], mm: P[i] ?? 0, pEnd: t * 1000, sun: SD[i] == null ? null : SD[i] / 60 }));
+  return { time: h.time || [], col, at };
+}
+async function fcOpenMeteo(lat, lon, H, m) {
+  const [res, run] = await Promise.all([
+    omHourly(lat, lon, m.key, ['temperature_2m', 'precipitation', 'sunshine_duration', 'wind_speed_10m', 'wind_direction_10m', 'wind_gusts_10m'], Math.min(16, Math.ceil(H / 24) + 1)),
+    modelRun(m)
+  ]);
+  const T = res.col('temperature_2m'), P = res.col('precipitation'), SD = res.col('sunshine_duration');
+  const WS = res.col('wind_speed_10m'), WDR = res.col('wind_direction_10m'), G = res.col('wind_gusts_10m');
+  const rows = res.time.map((t, i) => ({ t: t * 1000, temp: T[i], mm: P[i] ?? 0, pEnd: t * 1000, sun: SD[i] == null ? null : SD[i] / 60, wind: WS[i], wdir: WDR[i], gust: G[i] }));
+  return { rows, at: res.at, run };
 }
 const KEY_FETCH = {
   async owm(lat, lon, key) {
-    const d = await cachedJSON(`https://api.openweathermap.org/data/2.5/forecast?lat=${lat.toFixed(4)}&lon=${lon.toFixed(4)}&units=metric&appid=${encodeURIComponent(key)}`, 15, `owm_${lat.toFixed(2)}_${lon.toFixed(2)}`);
-    return (d.list || []).map(x => ({ t: x.dt * 1000, temp: x.main?.temp, mm: (x.rain?.['3h'] || 0) + (x.snow?.['3h'] || 0), pEnd: x.dt * 1000, sun: null }));
+    const { data: d, at } = await cachedJSON(`https://api.openweathermap.org/data/2.5/forecast?lat=${lat.toFixed(4)}&lon=${lon.toFixed(4)}&units=metric&appid=${encodeURIComponent(key)}`, 15, `owm_${lat.toFixed(2)}_${lon.toFixed(2)}`);
+    return { at, rows: (d.list || []).map(x => ({ t: x.dt * 1000, temp: x.main?.temp, mm: (x.rain?.['3h'] || 0) + (x.snow?.['3h'] || 0), pEnd: x.dt * 1000, sun: null, wind: ms2kmh(x.wind?.speed), wdir: x.wind?.deg, gust: ms2kmh(x.wind?.gust) })) };
   },
   async weatherapi(lat, lon, key) {
-    const d = await cachedJSON(`https://api.weatherapi.com/v1/forecast.json?key=${encodeURIComponent(key)}&q=${lat.toFixed(4)},${lon.toFixed(4)}&days=3&aqi=no&alerts=no`, 15, `wapi_${lat.toFixed(2)}_${lon.toFixed(2)}`);
-    const out = [];
-    for (const day of d.forecast?.forecastday || []) for (const x of day.hour || []) out.push({ t: x.time_epoch * 1000, temp: x.temp_c, mm: x.precip_mm || 0, pEnd: (x.time_epoch + 3600) * 1000, sun: null });
-    return out;
+    const { data: d, at } = await cachedJSON(`https://api.weatherapi.com/v1/forecast.json?key=${encodeURIComponent(key)}&q=${lat.toFixed(4)},${lon.toFixed(4)}&days=3&aqi=no&alerts=no`, 15, `wapi_${lat.toFixed(2)}_${lon.toFixed(2)}`);
+    const rows = [];
+    for (const day of d.forecast?.forecastday || []) for (const x of day.hour || []) rows.push({ t: x.time_epoch * 1000, temp: x.temp_c, mm: x.precip_mm || 0, pEnd: (x.time_epoch + 3600) * 1000, sun: null, wind: x.wind_kph, wdir: x.wind_degree, gust: x.gust_kph });
+    return { rows, at };
   },
   async tomorrow(lat, lon, key) {
-    const d = await cachedJSON(`https://api.tomorrow.io/v4/weather/forecast?location=${lat.toFixed(4)},${lon.toFixed(4)}&timesteps=1h&units=metric&apikey=${encodeURIComponent(key)}`, 20, `tio_${lat.toFixed(2)}_${lon.toFixed(2)}`);
-    return (d.timelines?.hourly || []).map(x => {
+    const { data: d, at } = await cachedJSON(`https://api.tomorrow.io/v4/weather/forecast?location=${lat.toFixed(4)},${lon.toFixed(4)}&timesteps=1h&units=metric&apikey=${encodeURIComponent(key)}`, 20, `tio_${lat.toFixed(2)}_${lon.toFixed(2)}`);
+    return { at, rows: (d.timelines?.hourly || []).map(x => {
       const v = x.values || {}, t = new Date(x.time).getTime();
       const mm = v.precipitationIntensity ?? ((v.rainIntensity || 0) + (v.snowIntensity || 0) + (v.sleetIntensity || 0) + (v.freezingRainIntensity || 0));
-      return { t, temp: v.temperature, mm, pEnd: t + 3600000, sun: null };
-    });
+      return { t, temp: v.temperature, mm, pEnd: t + HOUR, sun: null, wind: ms2kmh(v.windSpeed), wdir: v.windDirection, gust: ms2kmh(v.windGust) };
+    }) };
   },
   async pirate(lat, lon, key) {
-    const d = await cachedJSON(`https://api.pirateweather.net/forecast/${encodeURIComponent(key)}/${lat.toFixed(4)},${lon.toFixed(4)}?units=si&extend=hourly&exclude=currently,minutely,daily,alerts`, 15, `pw_${lat.toFixed(2)}_${lon.toFixed(2)}`);
-    return (d.hourly?.data || []).map(x => ({ t: x.time * 1000, temp: x.temperature, mm: x.precipIntensity || 0, pEnd: (x.time + 3600) * 1000, sun: null }));
+    const { data: d, at } = await cachedJSON(`https://api.pirateweather.net/forecast/${encodeURIComponent(key)}/${lat.toFixed(4)},${lon.toFixed(4)}?units=si&extend=hourly&exclude=currently,minutely,daily,alerts`, 15, `pw_${lat.toFixed(2)}_${lon.toFixed(2)}`);
+    return { at, rows: (d.hourly?.data || []).map(x => ({ t: x.time * 1000, temp: x.temperature, mm: x.precipIntensity || 0, pEnd: (x.time + 3600) * 1000, sun: null, wind: ms2kmh(x.windSpeed), wdir: x.windBearing, gust: ms2kmh(x.windGust) })) };
   },
   async meteoblue(lat, lon, key) {
-    const d = await cachedJSON(`https://my.meteoblue.com/packages/basic-1h_clouds-1h?lat=${lat.toFixed(4)}&lon=${lon.toFixed(4)}&apikey=${encodeURIComponent(key)}&format=json&timeformat=timestamp_utc`, 30, `mb_${lat.toFixed(2)}_${lon.toFixed(2)}`);
+    const { data: d, at } = await cachedJSON(`https://my.meteoblue.com/packages/basic-1h_clouds-1h?lat=${lat.toFixed(4)}&lon=${lon.toFixed(4)}&apikey=${encodeURIComponent(key)}&format=json&timeformat=timestamp_utc`, 30, `mb_${lat.toFixed(2)}_${lon.toFixed(2)}`);
     const h = d.data_1h || {};
-    return (h.time || []).map((t, i) => {
-      const ms = typeof t === 'number' ? t * 1000 : new Date(String(t).replace(' ', 'T') + 'Z').getTime() - (d.metadata?.utc_timeoffset || 0) * 3600000;
-      return { t: ms, temp: h.temperature?.[i], mm: h.precipitation?.[i] || 0, pEnd: ms, sun: h.sunshinetime?.[i] ?? null };
-    });
+    return { at, rows: (h.time || []).map((t, i) => {
+      const ms = typeof t === 'number' ? t * 1000 : new Date(String(t).replace(' ', 'T') + 'Z').getTime() - (d.metadata?.utc_timeoffset || 0) * HOUR;
+      return { t: ms, temp: h.temperature?.[i], mm: h.precipitation?.[i] || 0, pEnd: ms, sun: h.sunshinetime?.[i] ?? null, wind: ms2kmh(h.windspeed?.[i]), wdir: h.winddirection?.[i], gust: null };
+    }) };
   }
 };
-
 async function fetchModel(m, lat, lon, H) {
   if (m.src === 'bs') return fcMosmix(lat, lon, H);
-  if (m.src === 'om') return fcOpenMeteo(lat, lon, H, m.key);
+  if (m.src === 'om') return fcOpenMeteo(lat, lon, H, m);
   const key = (S.keys[m.prov] || '').trim();
-  if (!key) throw new Error(`kein API-Key für ${KEY_PROVIDERS[m.prov].name} eingetragen`);
-  return KEY_FETCH[m.prov](lat, lon, key);
+  if (!key) throw new Error(`kein API-Key für ${KEY_PROVIDERS[m.prov].name}`);
+  const r = await KEY_FETCH[m.prov](lat, lon, key);
+  return { ...r, run: null };
 }
 
+// ---------- 2. Verlauf ----------
+const currentModel = () => MODELS.find(m => m.key === S.model) || MODELS[0];
+const range = () => RANGES.find(r => r.h === S.rangeH) || RANGES[0];
 let fcSeq = 0;
 async function loadForecast(lat, lon) {
   const seq = ++fcSeq;
   const m = currentModel(), R = range();
   $('#chartTitle').textContent = R.title;
-  $('#modelInfo').textContent = m.info;
   $('#chartInfo').textContent = 'Lade Vorhersage …';
-  const note = $('#fallbackNote'); note.hidden = true;
-  let used = m, why = '';
-  if (m.maxH < R.h) { used = MOSMIX; why = `${m.name} reicht nur ${m.maxH >= 48 ? fmt(m.maxH / 24, 1) + ' Tage' : m.maxH + ' h'} weit – angezeigt wird DWD MOSMIX.`; }
-  let rows;
-  try { rows = await fetchModel(used, lat, lon, R.h); }
+  let used = m.maxH < R.h ? MOSMIX : m, res;
+  try { res = await fetchModel(used, lat, lon, R.h); }
   catch (e) {
     if (used === MOSMIX) throw e;
-    why = `${m.name}: ${e.message} – angezeigt wird DWD MOSMIX.`;
-    used = MOSMIX; rows = await fetchModel(MOSMIX, lat, lon, R.h);
+    console.warn(`${m.name}: ${e.message} – Rückfall auf MOSMIX`);
+    used = MOSMIX; res = await fetchModel(MOSMIX, lat, lon, R.h);
   }
-  if (seq !== fcSeq) return;              // inzwischen anderes Modell/Zeitraum gewählt
-  if (why) { note.textContent = why; note.hidden = false; }
+  if (seq !== fcSeq) return;
   const start = new Date(); start.setMinutes(0, 0, 0);
-  const t0 = start.getTime(), t1 = t0 + R.h * 3600000;
-  rows = rows.filter(r => r.temp != null && r.t >= t0 - 3 * 3600000 && r.t <= t1 + 3 * 3600000).sort((a, b) => a.t - b.t);
+  const t0 = start.getTime(), t1 = t0 + R.h * HOUR;
+  const rows = res.rows.filter(r => r.temp != null && r.t >= t0 - 3 * HOUR && r.t <= t1 + 3 * HOUR).sort((a, b) => a.t - b.t);
   if (rows.filter(r => r.t >= t0 && r.t <= t1).length < 2) throw new Error(`${used.name} liefert für diesen Ort keine Daten`);
+  renderModelInfo(used, res);
   drawChart(rows, t0, t1, used);
+}
+function renderModelInfo(m, res) {
+  const parts = [`<b>${esc(m.name)}</b>`];
+  if (res.run) parts.push(`Modelllauf ${whenTxt(res.run)}`);
+  const old = Date.now() - res.at > 30 * 60000;
+  parts.push(`<span class="${old ? 'old' : ''}">abgerufen ${hhmm(res.at)} Uhr (${ageTxt(res.at)})</span>`);
+  $('#modelInfo').innerHTML = `${I('clock')} <span>${parts.join(' · ')}</span>`;
+  $('#modelInfo').title = m.info;
 }
 
 let lastChart = null;
 function drawChart(rows, t0, t1, model) {
   lastChart = [rows, t0, t1, model];
-  const H = (t1 - t0) / 3600000;
-  const W = Math.max(320, Math.round($('#chart').clientWidth || 680)), PADL = 36, PADR = 18;
-  const TOP = 22, TH = W < 500 ? 120 : 140, XL = TOP + TH + 18;
-  const RAIN_Y = XL + 30, RAIN_H = 36;
-  const SUN_Y = RAIN_Y + RAIN_H + 30, SUN_H = 24;
+  const H = (t1 - t0) / HOUR;
+  const W = Math.max(300, Math.round($('#chart').clientWidth || 680)), PADL = 34, PADR = 16;
+  const plotW = W - PADL - PADR, pph = plotW / H;
+  const TOP = 22, TH = W < 500 ? 120 : 140;
+  const XL = TOP + TH + 15;                       // Stunden-Zeile
+  const hourStep = H <= 12 ? null : [3, 6, 12].find(s => s * pph >= 24);
+  const XD = H > 12 && hourStep ? XL + 15 : XL;   // Tages-Zeile (rückt hoch, wenn keine Stunden passen)
+  const RAIN_Y = XD + 32, RAIN_H = 34;
+  const WIND_Y = RAIN_Y + RAIN_H + 26, WIND_H = 34;
+  const SUN_Y = WIND_Y + WIND_H + 30, SUN_H = 22;
   const HGT = SUN_Y + SUN_H + 18;
-  const x = (t) => PADL + (t - t0) / (t1 - t0) * (W - PADL - PADR);
+  const x = (t) => PADL + (t - t0) / (t1 - t0) * plotW;
 
-  // Temperaturpunkte im Fenster (inkl. Randinterpolation)
   const tp = rows.filter(r => r.t >= t0 && r.t <= t1);
   const temps = tp.map(r => r.temp);
   let tmin = Math.floor(Math.min(...temps) - 1), tmax = Math.ceil(Math.max(...temps) + 1);
@@ -294,48 +371,55 @@ function drawChart(rows, t0, t1, model) {
   const y = (v) => TOP + TH - (v - tmin) / (tmax - tmin) * TH;
   let svg = '';
   const tickStep = (tmax - tmin) > 20 ? 5 : (tmax - tmin) > 9 ? 2 : 1;
-  for (let v = Math.ceil(tmin / tickStep) * tickStep; v <= tmax; v += tickStep) {
-    svg += `<line class="grid" x1="${PADL}" x2="${W - PADR}" y1="${y(v)}" y2="${y(v)}"/><text class="rowlbl" x="${PADL - 6}" y="${y(v) + 3}" text-anchor="end">${v}°</text>`;
-  }
+  for (let v = Math.ceil(tmin / tickStep) * tickStep; v <= tmax; v += tickStep)
+    svg += `<line class="grid" x1="${PADL}" x2="${W - PADR}" y1="${y(v)}" y2="${y(v)}"/><text class="rowlbl" x="${PADL - 5}" y="${y(v) + 3}" text-anchor="end">${v}°</text>`;
 
-  // X-Achse
-  const hourMs = 3600000, dayStart = (t) => { const d = new Date(t); d.setHours(0, 0, 0, 0); return d.getTime(); };
+  // ---- Zeitachse: Abstände richten sich nach der verfügbaren Breite ----
   if (H <= 12) {
-    for (let t = t0; t <= t1; t += 3 * hourMs) svg += `<line class="grid" x1="${x(t)}" x2="${x(t)}" y1="${TOP}" y2="${TOP + TH}"/><text class="xlbl" x="${x(t)}" y="${XL}">${t === t0 ? 'jetzt' : new Date(t).getHours() + ' Uhr'}</text>`;
-  } else if (H <= 72) {
-    for (let t = Math.ceil(t0 / (6 * hourMs)) * 6 * hourMs; t <= t1; t += hourMs) {
-      const hr = new Date(t).getHours(); if (hr % 6) continue;
-      const day = hr === 0;
-      svg += `<line class="${day ? 'daysep' : 'grid'}" x1="${x(t)}" x2="${x(t)}" y1="${TOP}" y2="${TOP + TH}"/>`;
-      svg += `<text class="xlbl${day ? ' day' : ''}" x="${x(t)}" y="${XL}">${day ? WD[new Date(t).getDay()] : hr + ' Uhr'}</text>`;
+    const step = 3 * pph >= 48 ? 3 : 6;
+    for (let t = t0; t <= t1; t += step * HOUR) {
+      const anchor = t === t0 ? 'start' : x(t) > W - PADR - 20 ? 'end' : 'middle';
+      svg += `<line class="grid" x1="${x(t)}" x2="${x(t)}" y1="${TOP}" y2="${TOP + TH}"/><text class="xlbl" x="${anchor === 'start' ? x(t) - 4 : x(t)}" y="${XL}" style="text-anchor:${anchor}">${t === t0 ? 'jetzt' : new Date(t).getHours() + ' Uhr'}</text>`;
     }
   } else {
-    for (let t = dayStart(t0) + 24 * hourMs; t <= t1; t += 24 * hourMs) svg += `<line class="daysep" x1="${x(t)}" x2="${x(t)}" y1="${TOP}" y2="${TOP + TH}"/>`;
-    for (let t = dayStart(t0); t < t1; t += 24 * hourMs) {
-      const a = Math.max(t, t0), b = Math.min(t + 24 * hourMs, t1); if ((b - a) < 6 * hourMs) continue;
-      const d = new Date(t);
-      const wide = (x(t + 24 * hourMs) - x(t)) >= 58;
-      svg += `<text class="xlbl day" x="${x((a + b) / 2)}" y="${XL}">${WD[d.getDay()]}${wide ? ` ${d.getDate()}.` : ''}</text>`;
+    // Tagesgrenzen
+    for (let t = dayStart(t0) + 24 * HOUR; t < t1; t += 24 * HOUR) svg += `<line class="daysep" x1="${x(t)}" x2="${x(t)}" y1="${TOP}" y2="${XD + 4}"/>`;
+    // Stunden: kleinster Abstand (3/6/12 h), bei dem die Zahlen mind. 24 px auseinander liegen
+    const step = hourStep;
+    if (step) {
+      svg += `<text class="rowlbl" x="${PADL - 5}" y="${XL}" text-anchor="end">Uhr</text>`;
+      for (let t = Math.ceil(t0 / HOUR) * HOUR; t <= t1; t += HOUR) {
+        const hr = new Date(t).getHours();
+        if (hr === 0 || hr % step) continue;
+        if (x(t) < PADL + 6 || x(t) > W - PADR - 6) continue;
+        svg += `<line class="grid" x1="${x(t)}" x2="${x(t)}" y1="${TOP}" y2="${TOP + TH}"/><text class="xlbl" x="${x(t)}" y="${XL}">${hr}</text>`;
+      }
+    }
+    // Tagesnamen (zentriert im sichtbaren Tagesabschnitt, Länge je nach Platz)
+    for (let t = dayStart(t0); t < t1; t += 24 * HOUR) {
+      const a = Math.max(t, t0), b = Math.min(t + 24 * HOUR, t1), span = x(b) - x(a);
+      if (span < 14) continue;
+      const d = new Date(t), today = dayStart(Date.now());
+      const name = t === today ? 'Heute' : t === today + 24 * HOUR ? 'Morgen' : WD[d.getDay()];
+      const txt = span >= 70 ? `${name} ${t > today + 24 * HOUR ? d.getDate() + '.' : ''}`.trim() : span >= 44 ? name : WD[d.getDay()];
+      svg += `<text class="xlbl day" x="${(x(a) + x(b)) / 2}" y="${XD}">${txt}</text>`;
     }
   }
 
-  // Temperaturkurve
+  // ---- Temperaturkurve ----
   const pts = rows.map(r => [x(r.t), y(r.temp)]);
   const path = pts.map((p, i) => { if (!i) return `M${p[0]},${p[1]}`; const p0 = pts[i - 1], cx = (p0[0] + p[0]) / 2; return `C${cx},${p0[1]} ${cx},${p[1]} ${p[0]},${p[1]}`; }).join(' ');
-  svg += `<defs><clipPath id="clipT"><rect x="${PADL}" y="0" width="${W - PADL - PADR}" height="${TOP + TH}"/></clipPath></defs>`;
+  svg += `<defs><clipPath id="clipT"><rect x="${PADL}" y="0" width="${plotW}" height="${TOP + TH}"/></clipPath></defs>`;
   svg += `<g clip-path="url(#clipT)"><path class="tarea" d="${path} L${pts[pts.length - 1][0]},${TOP + TH} L${pts[0][0]},${TOP + TH} Z"/><path class="tline" d="${path}"/></g>`;
-
-  // Temperatur-Beschriftung
-  const label = (r, cls = '') => `<circle class="tdot" cx="${x(r.t)}" cy="${y(r.temp)}" r="3.5"/><text class="tlbl ${cls}" x="${x(r.t)}" y="${cls === 'min' ? y(r.temp) + 16 : y(r.temp) - 9}">${fmt(r.temp, 0)}°</text>`;
+  const label = (r, cls = '') => `<circle class="tdot" cx="${x(r.t)}" cy="${y(r.temp)}" r="3.5"/><text class="tlbl ${cls}" x="${Math.min(Math.max(x(r.t), PADL + 10), W - PADR - 8)}" y="${cls === 'min' ? y(r.temp) + 16 : y(r.temp) - 9}">${fmt(r.temp, 0)}°</text>`;
   if (H <= 12) {
     const iMin = temps.indexOf(Math.min(...temps)), iMax = temps.indexOf(Math.max(...temps));
-    tp.forEach((r, i) => { if (((r.t - t0) / hourMs) % 3 === 0 || i === iMin || i === iMax) svg += label(r); });
+    const lstep = 3 * pph >= 48 ? 3 : 6;
+    tp.forEach((r, i) => { if (((r.t - t0) / HOUR) % lstep === 0 || i === iMin || i === iMax) svg += label(r); });
   } else {
-    // je Tag Maximum und Minimum
     const days = {};
     tp.forEach(r => { (days[dayStart(r.t)] ||= []).push(r); });
     for (const list of Object.values(days)) {
-      // Maximum nur, wenn der Nachmittag im Fenster liegt; Minimum nur, wenn der frühe Morgen im Fenster liegt
       const hr = (r) => new Date(r.t).getHours();
       const aft = list.filter(r => hr(r) >= 11 && hr(r) <= 17), morn = list.filter(r => hr(r) >= 2 && hr(r) <= 8);
       if (aft.length >= 2) svg += label(aft.reduce((a, b) => b.temp > a.temp ? b : a));
@@ -343,37 +427,69 @@ function drawChart(rows, t0, t1, model) {
     }
   }
 
-  // Balken: Bucketgröße je Zeitraum
-  const B = H <= 12 ? 1 : H <= 72 ? 3 : H <= 120 ? 6 : 24;
+  // ---- Zeitblöcke für Balken und Wind ----
+  // Blockgröße so wählen, dass ein Block mind. ca. 22 px breit ist
+  const B = H <= 12 ? (pph >= 22 ? 1 : 2) : [3, 6, 12, 24].find(b => b * pph >= 22) || 24;
   const buckets = [];
-  if (B === 24) { for (let t = dayStart(t0); t < t1; t += 24 * hourMs) buckets.push([Math.max(t, t0), Math.min(t + 24 * hourMs, t1)]); }
-  else { let t = t0; const first = Math.ceil((new Date(t0).getHours() + 0.001) / B) * B - new Date(t0).getHours(); if (B > 1 && first < B) { buckets.push([t0, t0 + first * hourMs]); t = t0 + first * hourMs; } for (; t < t1; t += B * hourMs) buckets.push([t, Math.min(t + B * hourMs, t1)]); }
+  if (B === 24) { for (let t = dayStart(t0); t < t1; t += 24 * HOUR) buckets.push([Math.max(t, t0), Math.min(t + 24 * HOUR, t1)]); }
+  else {
+    let t = t0; const h0 = new Date(t0).getHours(), first = (B - (h0 % B)) % B;
+    if (first) { buckets.push([t0, t0 + first * HOUR]); t = t0 + first * HOUR; }
+    for (; t < t1; t += B * HOUR) buckets.push([t, Math.min(t + B * HOUR, t1)]);
+  }
   const stat = buckets.map(([a, b]) => {
-    let mm = 0, sun = 0, sunN = 0;
-    for (const r of rows) { const e = r.pEnd - 1; if (e >= a && e < b) { mm += r.mm || 0; if (r.sun != null) { sun += r.sun; sunN++; } } }
-    return { a, b, mm, sun: sunN ? sun : null, hrs: (b - a) / hourMs };
+    let mm = 0, sun = 0, sunN = 0, u = 0, v = 0, ws = 0, wn = 0, gust = null;
+    for (const r of rows) {
+      const e = r.pEnd - 1;
+      if (e >= a && e < b) { mm += r.mm || 0; if (r.sun != null) { sun += r.sun; sunN++; } }
+      if (r.t > a && r.t <= b && r.wind != null) {
+        ws += r.wind; wn++;
+        if (r.wdir != null) { u += r.wind * Math.sin(rad(r.wdir)); v += r.wind * Math.cos(rad(r.wdir)); }
+        if (r.gust != null) gust = Math.max(gust ?? 0, r.gust);
+      }
+    }
+    const wdir = (u || v) ? (deg(Math.atan2(u, v)) + 360) % 360 : null;
+    return { a, b, mm, sun: sunN ? sun : null, hrs: (b - a) / HOUR, wind: wn ? ws / wn : null, wdir, gust };
   });
-  const rmax = Math.max(1, ...stat.map(s => s.mm));
-  const sunDaily = B === 24;
-  svg += `<text class="rowlbl" x="0" y="${RAIN_Y - 16}">Niederschlag (mm${B > 1 ? ` je ${B === 24 ? 'Tag' : B + ' h'}` : ''})</text>`;
-  const hasSun = stat.some(s => s.sun != null);
+  const blk = B === 24 ? 'je Tag' : B > 1 ? `je ${B} h` : '';
+  const hasSun = stat.some(s => s.sun != null), hasWind = stat.some(s => s.wind != null);
   const sunHrs = B >= 6;
-  svg += `<text class="rowlbl" x="0" y="${SUN_Y - 8}">Sonnenschein (${sunDaily ? 'h je Tag' : sunHrs ? `h je ${B} h` : 'min' + (B > 1 ? ` je ${B} h` : '')})${hasSun ? '' : ' – vom Modell nicht geliefert'}</text>`;
+
+  // Niederschlag
+  svg += `<text class="rowlbl" x="0" y="${RAIN_Y - 16}">Niederschlag (mm${blk ? ' ' + blk : ''})</text>`;
+  const rmax = Math.max(1, ...stat.map(s => s.mm));
+  // Wind
+  svg += `<text class="rowlbl" x="0" y="${WIND_Y - 8}">Wind (km/h${blk ? ', Mittel ' + blk : ''}) · Pfeil zeigt Zugrichtung${hasWind ? '' : ' – nicht geliefert'}</text>`;
+  // Sonne
+  svg += `<text class="rowlbl" x="0" y="${SUN_Y - 8}">Sonnenschein (${sunHrs ? 'h' : 'min'}${blk ? ' ' + blk : ''})${hasSun ? '' : ' – vom Modell nicht geliefert'}</text>`;
+
+  const windCol = (k) => k < 12 ? '#7a8a9c' : k < 29 ? '#1c7ed6' : k < 50 ? '#e67700' : k < 75 ? '#e03131' : '#9c36b5';
   for (const s of stat) {
     const cx = (x(s.a) + x(s.b)) / 2, bw = Math.min((x(s.b) - x(s.a)) * 0.72, 34);
+    const showTxt = (x(s.b) - x(s.a)) >= 17;
+    // Niederschlag
     const rh = s.mm > 0 ? Math.max(2, s.mm / rmax * RAIN_H) : 0;
     svg += `<line class="grid" x1="${cx - bw / 2}" x2="${cx + bw / 2}" y1="${RAIN_Y + RAIN_H}" y2="${RAIN_Y + RAIN_H}"/>`;
-    if (rh) { svg += `<rect class="rbar" x="${cx - bw / 2}" y="${RAIN_Y + RAIN_H - rh}" width="${bw}" height="${rh}" rx="2"/>`; if (bw >= 14 && s.mm >= 0.05) svg += `<text class="rval" x="${cx}" y="${RAIN_Y + RAIN_H - rh - 3}">${fmt(s.mm, s.mm >= 10 ? 0 : 1)}</text>`; }
+    if (rh) { svg += `<rect class="rbar" x="${cx - bw / 2}" y="${RAIN_Y + RAIN_H - rh}" width="${bw}" height="${rh}" rx="2"/>`; if (showTxt && s.mm >= 0.05) svg += `<text class="rval" x="${cx}" y="${RAIN_Y + RAIN_H - rh - 3}">${fmt(s.mm, s.mm >= 10 ? 0 : 1)}</text>`; }
+    // Wind
+    if (s.wind != null) {
+      const col = windCol(s.wind), sc = Math.min(1.25, 0.8 + s.wind / 60);
+      if (s.wdir != null) svg += `<g transform="translate(${cx} ${WIND_Y + 8}) rotate(${(s.wdir + 180) % 360}) scale(${sc})"><title>${fmt(s.wind, 0)} km/h aus ${dirName(s.wdir)}${s.gust != null ? `, Böen ${fmt(s.gust, 0)} km/h` : ''}</title><path d="M0,-8 L5.5,6 L0,3 L-5.5,6 Z" fill="${col}"/></g>`;
+      if (showTxt) svg += `<text class="wval" x="${cx}" y="${WIND_Y + 28}">${fmt(s.wind, 0)}</text>`;
+      if (showTxt && s.gust != null && s.gust >= 60) svg += `<text class="gval" x="${cx}" y="${WIND_Y + 39}">B ${fmt(s.gust, 0)}</text>`;
+    }
+    // Sonne
     const maxSun = s.hrs * 60, sv = Math.min(s.sun ?? 0, maxSun), sh = sv > 0 ? Math.max(2, sv / maxSun * SUN_H) : 0;
     svg += `<line class="grid" x1="${cx - bw / 2}" x2="${cx + bw / 2}" y1="${SUN_Y + SUN_H}" y2="${SUN_Y + SUN_H}"/>`;
     if (sh) svg += `<rect class="sbar" x="${cx - bw / 2}" y="${SUN_Y + SUN_H - sh}" width="${bw}" height="${sh}" rx="2"/>`;
-    if (sv >= 1 && bw >= 13) svg += `<text class="sval" x="${cx}" y="${SUN_Y + SUN_H + 12}">${sunHrs ? fmt(sv / 60, 1) : fmt(sv, 0)}</text>`;
+    if (sv >= 1 && showTxt) svg += `<text class="sval" x="${cx}" y="${SUN_Y + SUN_H + 12}">${sunHrs ? fmt(sv / 60, 1) : fmt(sv, 0)}</text>`;
   }
 
-  $('#chart').innerHTML = `<svg viewBox="0 0 ${W} ${HGT}" role="img">${svg}</svg>`;
+  $('#chart').innerHTML = `<svg viewBox="0 0 ${W} ${HGT}" width="${W}" height="${HGT}" role="img">${svg}</svg>`;
   const rain = stat.reduce((a, s) => a + s.mm, 0), sun = stat.reduce((a, s) => a + (s.sun || 0), 0);
+  const gmax = Math.max(0, ...stat.map(s => s.gust ?? 0));
   const sunTxt = !hasSun ? '–' : sun >= 60 ? `${fmt(sun / 60, 1)} h` : `${fmt(sun, 0)} min`;
-  $('#chartInfo').textContent = `Summe: ${fmt(rain)} mm Niederschlag · ${sunTxt} Sonne · Min ${fmt(Math.min(...temps), 0)}° / Max ${fmt(Math.max(...temps), 0)}° · ${model.name}`;
+  $('#chartInfo').textContent = `Summe: ${fmt(rain)} mm Niederschlag · ${sunTxt} Sonne · Min ${fmt(Math.min(...temps), 0)}° / Max ${fmt(Math.max(...temps), 0)}°${gmax ? ` · Böen bis ${fmt(gmax, 0)} km/h` : ''}`;
 }
 
 function initForecastControls() {
@@ -382,7 +498,7 @@ function initForecastControls() {
   const fill = () => {
     sel.innerHTML = Object.entries(groups).map(([g, list]) => `<optgroup label="${esc(g)}">${list.map(m => {
       const miss = m.src === 'key' && !(S.keys[m.prov] || '').trim();
-      return `<option value="${m.key}">${esc(m.name)}${miss ? ' (Key fehlt)' : ''}</option>`;
+      return `<option value="${m.key}" title="${esc(m.info)}">${esc(m.name)}${miss ? ' (Key fehlt)' : ''}</option>`;
     }).join('')}</optgroup>`).join('');
     sel.value = currentModel().key;
   };
@@ -399,6 +515,105 @@ function initForecastControls() {
 }
 function reloadForecast() { if (S.loc) loadForecast(S.loc.lat, S.loc.lon).catch(showForecastError); }
 function showForecastError(e) { $('#chart').innerHTML = ''; $('#chartInfo').textContent = `Vorhersage nicht abrufbar (${e.message}).`; }
+
+// ---------- Textprognose (ICON-D2) ----------
+async function loadDayText(lat, lon) {
+  const vars = ['temperature_2m', 'precipitation', 'weather_code', 'cloud_cover', 'wind_speed_10m', 'wind_gusts_10m'];
+  let model = MODELS.find(m => m.key === 'icon_d2'), res;
+  const get = async (m) => {
+    const r = await omHourly(lat, lon, m.key, vars, 3);
+    const rows = r.time.map((t, i) => ({ t: t * 1000, temp: r.col('temperature_2m')[i], mm: r.col('precipitation')[i] ?? 0, code: r.col('weather_code')[i], cloud: r.col('cloud_cover')[i], wind: r.col('wind_speed_10m')[i], gust: r.col('wind_gusts_10m')[i] })).filter(x => x.temp != null);
+    if (rows.length < 12) throw new Error('keine Daten');
+    return { rows, at: r.at };
+  };
+  try { res = await get(model); }
+  catch { model = MODELS.find(m => m.key === 'icon_seamless'); res = await get(model); }
+  const run = await modelRun(model);
+  const out = buildDayText(res.rows, Date.now());
+  if (!out) { $('#dayCard').hidden = true; return; }
+  $('#dayIcon').innerHTML = window.ICONS.weather(out.icon);
+  $('#dayText').textContent = out.text;
+  $('#daySource').textContent = `Textprognose nach ${model.name}${run ? ` · Modelllauf ${whenTxt(run)}` : ''} · abgerufen ${hhmm(res.at)} Uhr`;
+  $('#dayCard').hidden = false;
+}
+
+function buildDayText(rows, now) {
+  const tomorrow = new Date(now).getHours() >= 20;
+  const base = dayStart(now) + (tomorrow ? 24 * HOUR : 0);
+  const word = tomorrow ? 'Morgen' : 'Heute';
+  const PER = [{ k: 'V', a: 6, b: 12 }, { k: 'N', a: 12, b: 18 }, { k: 'A', a: 18, b: 24 }];
+  const periods = [];
+  for (const p of PER) {
+    const from = Math.max(base + p.a * HOUR, tomorrow ? 0 : now), to = base + p.b * HOUR;
+    const list = rows.filter(r => r.t > from && r.t <= to);
+    if (list.length < 2) continue;
+    const avg = (f) => { const v = list.map(f).filter(x => x != null); return v.length ? v.reduce((a, b) => a + b, 0) / v.length : null; };
+    const codes = list.map(r => r.code).filter(c => c != null);
+    periods.push({
+      k: p.k, list, mm: list.reduce((a, r) => a + (r.mm || 0), 0), cloud: avg(r => r.cloud), wind: avg(r => r.wind),
+      gust: Math.max(0, ...list.map(r => r.gust ?? 0)), codes,
+      fog: codes.filter(c => c === 45 || c === 48).length >= list.length / 2,
+      tmax: Math.max(...list.map(r => r.temp)), tmin: Math.min(...list.map(r => r.temp))
+    });
+  }
+  if (!periods.length) return null;
+
+  const wetType = (p) => {
+    const has = (f) => p.codes.some(f);
+    if (has(c => c >= 95)) return 'thunder';
+    if (p.mm < 0.2) return null;
+    if (has(c => (c >= 71 && c <= 77) || c === 85 || c === 86)) return 'snow';
+    if (has(c => [56, 57, 66, 67].includes(c))) return 'freezing';
+    if (has(c => c >= 80 && c <= 82)) return 'shower';
+    if (has(c => c >= 61 && c <= 65)) return p.mm / p.list.length >= 0.8 ? 'heavy' : 'rain';
+    if (has(c => c >= 51 && c <= 55)) return 'drizzle';
+    return 'rain';
+  };
+  const WET = { thunder: 'mit Gewittern', snow: 'mit Schneefall', freezing: 'mit gefrierendem Regen (Glättegefahr)', shower: 'mit Schauern', heavy: 'mit kräftigem Regen', rain: 'mit Regen', drizzle: 'mit Nieselregen' };
+  // Bewölkungsklasse: 0 klar, 1 gering, 2 wolkig, 3 bedeckt, 4 Nebel
+  const skyCls = (p) => p.fog ? 4 : (p.cloud ?? 50) < 20 ? 0 : (p.cloud ?? 50) < 45 ? 1 : (p.cloud ?? 50) < 75 ? 2 : 3;
+  const SKY_DAY = ['sonnig', 'heiter', 'wolkig', 'bedeckt', 'neblig'], SKY_NIGHT = ['klar', 'überwiegend klar', 'wolkig', 'bedeckt', 'neblig'];
+  for (const p of periods) p.wet = wetType(p);
+  const anyWet = periods.some(p => p.wet);
+  for (const p of periods) p.key = `${skyCls(p)}|${p.wet}`;
+  // gleiche Abschnitte zusammenfassen (z. B. „sonnig“ am Tag und „klar“ am Abend)
+  const segs = [];
+  for (const p of periods) { const last = segs[segs.length - 1]; if (last && last.key === p.key) last.k += p.k; else segs.push({ k: p.k, key: p.key, p }); }
+  for (const sg of segs) {
+    const c = skyCls(sg.p), word = sg.k === 'A' ? SKY_NIGHT[c] : SKY_DAY[c];
+    sg.desc = sg.p.wet ? `${word} ${WET[sg.p.wet]}` : anyWet ? `${word} und trocken` : word;
+  }
+  const FIRST = { V: ' Vormittag', N: ' Nachmittag', A: ' Abend', VN: ' tagsüber', NA: ' ab dem Nachmittag', VNA: '' };
+  const NEXT = { N: 'am Nachmittag', A: 'am Abend', NA: 'ab dem Nachmittag' };
+  let text = segs.length === 1 ? `${word} ${segs[0].desc}` : `${word}${FIRST[segs[0].k] ?? ''} ${segs[0].desc}` + segs.slice(1).map(s => `, ${NEXT[s.k] ?? ''} ${s.desc}`).join('');
+
+  // Wind
+  const f = periods[0], l = periods[periods.length - 1];
+  if (periods.length > 1 && l.wind - f.wind >= 8 && l.wind >= 15) text += ' bei auffrischendem Wind';
+  else if (periods.length > 1 && f.wind - l.wind >= 8 && f.wind >= 15) text += ' bei nachlassendem Wind';
+  else if (Math.max(...periods.map(p => p.wind ?? 0)) >= 30) text += ' bei kräftigem Wind';
+  text += '.';
+  if (!anyWet) text += ' Es bleibt trocken.';
+  const gmax = Math.max(...periods.map(p => p.gust));
+  if (gmax >= 75) text += ` Sturmböen bis ${fmt(gmax, 0)} km/h.`;
+  else if (gmax >= 60) text += ` Stürmische Böen bis ${fmt(gmax, 0)} km/h.`;
+  else if (gmax >= 45) text += ` Windböen bis ${fmt(gmax, 0)} km/h.`;
+
+  // Temperatur
+  const dayP = periods.filter(p => p.k !== 'A');
+  if (dayP.length) text += ` Höchstwert ${fmt(Math.max(...dayP.map(p => p.tmax)), 0)} °C`;
+  else text += ` Temperaturen um ${fmt((l.tmax + l.tmin) / 2, 0)} °C`;
+  const night = rows.filter(r => r.t > base + 24 * HOUR && r.t <= base + 31 * HOUR);
+  if (night.length >= 3) text += `, in der Nacht ${fmt(Math.min(...night.map(r => r.temp)), 0)} °C`;
+  text += '.';
+
+  // passendes Symbol: nasser Abschnitt mit meistem Niederschlag, sonst Tagesmitte
+  const wetP = periods.filter(p => p.wet).sort((a, b) => b.mm - a.mm)[0];
+  const main = wetP || periods.find(p => p.k === 'N') || periods[0];
+  const ICON_OF = { thunder: 'thunderstorm', snow: 'snow', freezing: 'sleet', shower: 'showers', heavy: 'rain', rain: 'rain', drizzle: 'rain' };
+  let icon = main.wet ? ICON_OF[main.wet] : main.fog ? 'fog' : (main.cloud ?? 50) < 20 ? (main.k === 'A' ? 'clear-night' : 'clear-day') : (main.cloud ?? 50) < 75 ? (main.k === 'A' ? 'partly-cloudy-night' : 'partly-cloudy-day') : 'cloudy';
+  return { text: text.replace(/\s+/g, ' ').trim(), icon };
+}
 
 // ---------- 3. Warnungen ----------
 const sevRank = (s) => ({ minor: 1, moderate: 2, severe: 3, extreme: 4 }[s] || 0);
@@ -453,14 +668,9 @@ function setBase(key, persist = true) {
   activeBase = key;
   if (persist) { S.basemap = key; save(); }
 }
-
-// Satelliten-Ebenen: aus GetCapabilities ermitteln (einmal pro Woche), sonst Standardnamen
 let SAT = { ...SAT_DEFAULT, source: 'Standard' };
 async function discoverSatLayers() {
-  try {
-    const c = JSON.parse(localStorage.getItem(LS_SAT) || 'null');
-    if (c && Date.now() - c.ts < 7 * 86400000) { SAT = c.layers; return; }
-  } catch { }
+  try { const c = JSON.parse(localStorage.getItem(LS_SAT) || 'null'); if (c && Date.now() - c.ts < 7 * 86400000) { SAT = c.layers; return; } } catch { }
   try {
     const r = await fetch(`${SAT_WMS}?service=WMS&request=GetCapabilities&version=1.3.0`);
     if (!r.ok) throw new Error();
@@ -473,7 +683,7 @@ async function discoverSatLayers() {
       SAT = { day: day || SAT_DEFAULT.day, night: night || day || SAT_DEFAULT.night, source: 'EUMETSAT-Katalog' };
       localStorage.setItem(LS_SAT, JSON.stringify({ ts: Date.now(), layers: SAT }));
     }
-  } catch { /* Katalog nicht abrufbar → Standardnamen */ }
+  } catch { }
 }
 function satLayerName() {
   const day = S.satDay.trim() || SAT.day, night = S.satNight.trim() || SAT.night;
@@ -582,7 +792,7 @@ async function loadRadar(lat, lon) {
         const dx = xx - px, dy = py - yy, dist = Math.hypot(dx, dy); if (dist > NEAR_KM) continue;
         const v = f.data[yy * w + xx]; if (v >= 2500) continue;
         if (dist <= LOC_KM && v > loc) loc = v;
-        if (v >= RAIN_RAW && dist < minD) { minD = dist; minB = (Math.atan2(dx, dy) * 180 / Math.PI + rot + 360) % 360; }
+        if (v >= RAIN_RAW && dist < minD) { minD = dist; minB = (deg(Math.atan2(dx, dy)) + rot + 360) % 360; }
       }
     return { t: f.t, loc, minD: isFinite(minD) ? minD : null, minB };
   });
@@ -656,7 +866,6 @@ function locate() {
     { timeout: 15000, maximumAge: 5 * 60000 });
 }
 function setLocation(lat, lon, info) {
-  // gewählte Station behalten, solange sie in der Nähe liegt
   if (S.station?.lat != null && distKm(lat, lon, S.station.lat, S.station.lon) > 60) { S.station = null; toast('Gewählte Station liegt zu weit weg – zurück auf automatisch.'); }
   S.loc = { lat, lon, name: info?.name || `${fmt(lat, 3)}, ${fmt(lon, 3)}`, sub: info?.sub || '' }; save();
   renderLoc(); drawMarker(); map.setView([lat, lon], 9);
@@ -673,9 +882,10 @@ let busy = false;
 async function refresh() {
   if (!S.loc || busy) return; busy = true; $('#btnRefresh').classList.add('spin');
   const { lat, lon } = S.loc; offlineHits = 0;
-  refreshMapLayers();
+  refreshMapLayers(); renderSun();
   await Promise.allSettled([
     loadCurrent(lat, lon).catch(e => { $('#nowStation').textContent = `Aktuelle Werte nicht abrufbar (${e.message})`; }),
+    loadDayText(lat, lon).catch(() => { $('#dayCard').hidden = true; }),
     loadForecast(lat, lon).catch(showForecastError),
     loadWarnings(lat, lon).catch(() => { $('#warnings').innerHTML = '<div class="warn-none">Warnungen derzeit nicht abrufbar</div>'; }),
     loadRadar(lat, lon).then(renderRainHint).catch(() => renderRainHint(null))
@@ -708,8 +918,6 @@ function initSettings() {
   bind('#setSatNight', 'satNight', v => v.trim(), satChanged);
   bind('#setInterval', 'intervalMin', Number, schedule);
   bind('#setNotify', 'notify'); bind('#setWarnNotify', 'warnNotify'); bind('#setAuto', 'autoLocate');
-
-  // API-Keys
   const box = $('#keyFields');
   box.innerHTML = Object.entries(KEY_PROVIDERS).map(([id, p]) => `
     <div class="keyrow">
@@ -749,7 +957,6 @@ function initPwa() {
     installEvt.prompt(); await installEvt.userChoice; installEvt = null; $('#btnInstall').hidden = true;
   };
   $('#btnInstall').onclick = doInstall; $('#btnInstall2').onclick = doInstall;
-
   if ('serviceWorker' in navigator) {
     navigator.serviceWorker.register('sw.js').then(reg => {
       reg.addEventListener('updatefound', () => {
@@ -773,7 +980,6 @@ function init() {
   $('#stationIco').innerHTML = I('station'); $('#stationChevron').innerHTML = I('chevron');
   $('#nowIcon').innerHTML = window.ICONS.weather('unknown');
   initForecastControls(); initSettings(); initMap(); renderLoc(); initPwa();
-  $('#modelInfo').textContent = currentModel().info;
   $('#btnLocate').onclick = locate; $('#btnSearch').onclick = openSearch; $('#btnRefresh').onclick = refresh;
   $('#btnSettings').onclick = () => { $('#satFound').textContent = `Gefunden: Tag ${SAT.day}, Nacht ${SAT.night} (${SAT.source})`; $('#dlgSettings').showModal(); };
   $('#btnCloseSearch').onclick = () => $('#dlgSearch').close();
@@ -782,9 +988,10 @@ function init() {
   $('#tabRadar').onclick = () => setMapMode('radar'); $('#tabSat').onclick = () => setMapMode('sat');
   $('#tabBoth').onclick = () => setMapMode('both'); $('#tabWind').onclick = () => setMapMode('wind');
   discoverSatLayers().then(() => { if (S.mapMode === 'sat' || S.mapMode === 'both') setMapMode(S.mapMode, false); });
-  if (S.loc) { drawMarker(); map.setView([S.loc.lat, S.loc.lon], 9); refresh(); }
+  if (S.loc) { drawMarker(); renderSun(); map.setView([S.loc.lat, S.loc.lon], 9); refresh(); }
   if (S.autoLocate || !S.loc) locate();
   schedule();
+  setInterval(renderSun, 10 * 60000);
 }
 let rsT;
 window.addEventListener('resize', () => { clearTimeout(rsT); rsT = setTimeout(() => { if (lastChart) drawChart(...lastChart); }, 150); });

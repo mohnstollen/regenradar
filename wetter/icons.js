@@ -1,7 +1,7 @@
 /* Eigene SVG-Icons – unabhängig von Emoji-Schriften des Geräts */
 'use strict';
 (function () {
-  const C = { sun: '#f5b301', sunRay: '#f5b301', moon: '#f2d16b', cloud: '#e9eef5', cloudLine: '#8796a8', dark: '#9aa7b6', rain: '#2f7fff', snow: '#7cc4ff', bolt: '#ffc400', fog: '#9aa7b6' };
+  const C = { sun: '#f5b301', moon: '#f2d16b', cloud: '#e9eef5', cloudLine: '#8796a8', dark: '#9aa7b6', rain: '#2f7fff', snow: '#7cc4ff', bolt: '#ffc400', fog: '#9aa7b6' };
   const cloudPath = 'M17 50h31a11 11 0 0 0 1.5-21.9A15 15 0 0 0 20.3 25 12.5 12.5 0 0 0 17 50z';
   const cloud = (dx = 0, dy = 0, s = 1, fill = C.cloud) =>
     `<g transform="translate(${dx} ${dy}) scale(${s})"><path d="${cloudPath}" fill="${fill}" stroke="${C.cloudLine}" stroke-width="2.2" stroke-linejoin="round"/></g>`;
@@ -9,7 +9,7 @@
     let rays = '';
     for (let i = 0; i < 8; i++) {
       const a = i * Math.PI / 4, r1 = r + 4, r2 = r + 9;
-      rays += `<line x1="${(cx + Math.cos(a) * r1).toFixed(1)}" y1="${(cy + Math.sin(a) * r1).toFixed(1)}" x2="${(cx + Math.cos(a) * r2).toFixed(1)}" y2="${(cy + Math.sin(a) * r2).toFixed(1)}" stroke="${C.sunRay}" stroke-width="3.2" stroke-linecap="round"/>`;
+      rays += `<line x1="${(cx + Math.cos(a) * r1).toFixed(1)}" y1="${(cy + Math.sin(a) * r1).toFixed(1)}" x2="${(cx + Math.cos(a) * r2).toFixed(1)}" y2="${(cy + Math.sin(a) * r2).toFixed(1)}" stroke="${C.sun}" stroke-width="3.2" stroke-linecap="round"/>`;
     }
     return `${rays}<circle cx="${cx}" cy="${cy}" r="${r}" fill="${C.sun}"/>`;
   };
@@ -27,6 +27,7 @@
     fog: svg(cloud(0, -8, 1) + [48, 54, 60].map((y, i) => `<line x1="${10 + i * 3}" y1="${y}" x2="${54 - i * 3}" y2="${y}" stroke="${C.fog}" stroke-width="3" stroke-linecap="round"/>`).join('')),
     wind: svg(`<g fill="none" stroke="${C.dark}" stroke-width="3.5" stroke-linecap="round"><path d="M8 26h30a7 7 0 1 0-7-7"/><path d="M8 36h40a7 7 0 1 1-7 7"/><path d="M8 46h20"/></g>`),
     rain: svg(cloud(0, -8, 1) + drops(3)),
+    showers: svg(sun(42, 18, 9) + cloud(-4, -4, 1) + drops(2)),
     sleet: svg(cloud(0, -8, 1) + `<line x1="22" y1="53" x2="18" y2="61" stroke="${C.rain}" stroke-width="3.2" stroke-linecap="round"/>` + flake(38, 56)),
     snow: svg(cloud(0, -8, 1) + flake(22, 55) + flake(40, 56)),
     hail: svg(cloud(0, -8, 1) + [20, 32, 44].map(x => `<circle cx="${x}" cy="56" r="3.2" fill="#b9d9f5" stroke="${C.rain}" stroke-width="1.5"/>`).join('')),
@@ -34,8 +35,8 @@
     unknown: svg(cloud(0, 0, 1))
   };
 
-  // UI-Icons (Strichgrafik, nimmt Textfarbe an)
-  const ui = (d, extra = '') => `<svg class="ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${d}${extra}</svg>`;
+  const ui = (d) => `<svg class="ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${d}</svg>`;
+  const sunHalf = '<path d="M5.5 17a6.5 6.5 0 0 1 13 0z" fill="#f5b301" stroke="#e0a000" stroke-width="1"/><path d="M2 20.5h20"/>';
   const UI = {
     pin: ui('<path d="M12 21s-7-6.2-7-11.5A7 7 0 0 1 19 9.5C19 14.8 12 21 12 21z"/><circle cx="12" cy="9.5" r="2.5"/>'),
     search: ui('<circle cx="11" cy="11" r="7"/><path d="M20 20l-4-4"/>'),
@@ -53,8 +54,10 @@
     station: ui('<path d="M12 21V10"/><path d="M8 21h8"/><circle cx="12" cy="7" r="2"/><path d="M7.8 3.8a6 6 0 0 0 0 6.4"/><path d="M16.2 3.8a6 6 0 0 1 0 6.4"/>'),
     chevron: ui('<path d="M6 9l6 6 6-6"/>'),
     rainIco: ui('<path d="M7 14h10a4 4 0 0 0 .5-8A6 6 0 0 0 6 5.5 4.3 4.3 0 0 0 7 14z"/><path d="M9 17l-1 3"/><path d="M13 17l-1 3"/><path d="M17 17l-1 3"/>'),
-    sun: ui('<circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M2 12h2M20 12h2M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4"/>'),
-    key: ui('<circle cx="8" cy="15" r="4"/><path d="M11 12l9-9"/><path d="M17 6l3 3"/>')
+    sunrise: ui(sunHalf + '<path d="M12 2.5v6"/><path d="M9.3 5.2L12 2.5l2.7 2.7"/>'),
+    sunset: ui(sunHalf + '<path d="M12 2.5v6"/><path d="M9.3 5.8L12 8.5l2.7-2.7"/>'),
+    daylen: ui('<circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/>'),
+    clock: ui('<circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/>')
   };
 
   window.ICONS = { weather: (k) => WEATHER[k] || WEATHER.unknown, ui: (k) => UI[k] || '' };

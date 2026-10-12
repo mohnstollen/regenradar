@@ -2,7 +2,7 @@
   "id": "./",
   "name": "Wetter – DWD & Modelle",
   "short_name": "Wetter",
-  "description": "Aktuelles Wetter der DWD-Station, Verlauf bis 10 Tage mit Modellwahl, DWD-Warnungen, Regenradar, Satellit und Wind",
+  "description": "Aktuelles Wetter der DWD-Station, Textprognose, Verlauf bis 10 Tage mit Modellwahl, DWD-Warnungen, Regenradar, Satellit und Wind",
   "start_url": "./",
   "scope": "./",
   "display": "standalone",

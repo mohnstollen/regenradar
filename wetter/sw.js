@@ -1,9 +1,11 @@
 /* Service Worker – Wetter-App
  * App-Dateien: zuerst Netz, sonst Cache (Updates sofort sichtbar, offline lauffähig)
- * Wetterdaten (Bright Sky, Open-Meteo): zuerst Netz, offline letzte Antwort (markiert mit x-sw-cache)
+ * Wetterdaten (Bright Sky, Open-Meteo): zuerst Netz, offline letzte Antwort
+ *   x-sw-time  = Zeitpunkt des ursprünglichen Abrufs (für die Altersanzeige)
+ *   x-sw-cache = Antwort stammt aus dem Offline-Speicher
  * Karten, Radar, Satellit, Windy, Anbieter mit API-Key: nur Netz
  */
-const VERSION = 'wetter-v3.0.0';
+const VERSION = 'wetter-v3.1.0';
 const SHELL = ['./', './index.html', './style.css', './app.js', './icons.js', './manifest.webmanifest',
   './vendor/leaflet/leaflet.js', './vendor/leaflet/leaflet.css',
   './vendor/leaflet/images/marker-icon.png', './vendor/leaflet/images/marker-icon-2x.png', './vendor/leaflet/images/marker-shadow.png',
@@ -18,12 +20,10 @@ self.addEventListener('install', e => {
 self.addEventListener('activate', e => {
   e.waitUntil(caches.keys().then(k => Promise.all(k.filter(x => x !== VERSION && x !== 'wetter-data').map(x => caches.delete(x)))).then(() => self.clients.claim()));
 });
-
-async function markCached(res) {
-  const h = new Headers(res.headers); h.set('x-sw-cache', '1');
+async function withHeaders(res, extra) {
+  const h = new Headers(res.headers); for (const [k, v] of Object.entries(extra)) h.set(k, v);
   return new Response(await res.blob(), { status: res.status, statusText: res.statusText, headers: h });
 }
-
 self.addEventListener('fetch', e => {
   const req = e.request; if (req.method !== 'GET') return;
   const u = new URL(req.url);
@@ -33,11 +33,12 @@ self.addEventListener('fetch', e => {
     return;
   }
   if (DATA_HOSTS.includes(u.hostname) && !u.pathname.startsWith('/radar')) {
-    e.respondWith(fetch(req).then(r => { if (r.ok) { const c = r.clone(); caches.open('wetter-data').then(x => x.put(req, c)); } return r; })
-      .catch(async () => { const r = await caches.match(req); if (r) return markCached(r); throw new Error('offline'); }));
+    e.respondWith(fetch(req).then(async r => {
+      if (r.ok) { const stored = await withHeaders(r.clone(), { 'x-sw-time': String(Date.now()) }); caches.open('wetter-data').then(x => x.put(req, stored)); }
+      return r;
+    }).catch(async () => { const r = await caches.match(req); if (r) return withHeaders(r, { 'x-sw-cache': '1' }); throw new Error('offline'); }));
   }
 });
-
 self.addEventListener('notificationclick', e => {
   e.notification.close();
   e.waitUntil(self.clients.matchAll({ type: 'window', includeUncontrolled: true }).then(l => { for (const c of l) if ('focus' in c) return c.focus(); return self.clients.openWindow('./'); }));

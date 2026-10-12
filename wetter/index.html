@@ -4,7 +4,7 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
   <meta name="theme-color" content="#0b5cab">
-  <meta name="description" content="Wetter-App: DWD-Station, Verlauf bis 10 Tage mit Modellwahl, DWD-Warnungen, Regenradar, Satellit und Wind">
+  <meta name="description" content="Wetter-App: DWD-Station, Textprognose, Verlauf bis 10 Tage mit Modellwahl, DWD-Warnungen, Regenradar, Satellit und Wind">
   <meta name="mobile-web-app-capable" content="yes">
   <meta name="apple-mobile-web-app-capable" content="yes">
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
@@ -33,6 +33,9 @@
   <div id="offline" class="offline" hidden>Offline – es werden die zuletzt gespeicherten Daten angezeigt.</div>
 
   <main class="content">
+	<!-- 4. Warnungen -->
+    <section id="warnings" class="warnings" aria-live="polite"></section>
+
     <!-- 1. Aktuell -->
     <section class="card now">
       <div class="now-main">
@@ -42,13 +45,23 @@
           <div class="now-desc" id="nowDesc">–</div>
         </div>
       </div>
+      <div class="sunrow small" id="sunRow"></div>
       <div class="now-details small" id="nowDetails"></div>
       <button class="station-btn small" id="btnStation" type="button">
         <span id="stationIco"></span><span id="nowStation">Station wird ermittelt …</span><span id="stationChevron"></span>
       </button>
     </section>
 
-    <!-- 2. Verlauf -->
+    <!-- 2. Textprognose -->
+    <section class="card daytext" id="dayCard" hidden>
+      <div class="dt-icon" id="dayIcon"></div>
+      <div>
+        <div class="dt-text" id="dayText"></div>
+        <div class="small muted" id="daySource"></div>
+      </div>
+    </section>
+
+    <!-- 3. Verlauf -->
     <section class="card">
       <div class="chart-head">
         <h3 id="chartTitle">Die nächsten 12 Stunden</h3>
@@ -56,15 +69,11 @@
       </div>
       <div class="seg range" id="rangeSeg" role="tablist" aria-label="Zeitraum"></div>
       <div class="small muted model-info" id="modelInfo"></div>
-      <div id="fallbackNote" class="note small" hidden></div>
-      <div id="chart" class="chart" aria-label="Temperaturverlauf, Niederschlag und Sonnenschein"></div>
+      <div id="chart" class="chart" aria-label="Temperaturverlauf, Niederschlag, Wind und Sonnenschein"></div>
       <div class="small muted" id="chartInfo"></div>
     </section>
 
-    <!-- 3. Warnungen -->
-    <section id="warnings" class="warnings" aria-live="polite"></section>
-
-    <!-- 4. Karte -->
+    <!-- 5. Karte -->
     <section class="card mapcard">
       <div class="map-head">
         <h3 id="mapTitle">Regenradar</h3>
@@ -100,11 +109,11 @@
       Karte: © GeoBasis-DE / <a href="https://www.bkg.bund.de" target="_blank" rel="noopener">BKG</a> <span id="bkgYear"></span>
       <a href="https://creativecommons.org/licenses/by/4.0/" target="_blank" rel="noopener">CC BY 4.0</a>.
       Ortssuche: Open-Meteo, Ortsnamen: <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noopener">OpenStreetMap</a>.
+      Sonnenauf-/-untergang berechnet (NOAA-Verfahren).
       <span id="appVersion"></span>
     </footer>
   </main>
 
-  <!-- Ortssuche -->
   <dialog id="dlgSearch">
     <form id="searchForm">
       <h3>Ort suchen</h3>
@@ -117,17 +126,15 @@
     </form>
   </dialog>
 
-  <!-- Stationsauswahl -->
   <dialog id="dlgStation">
     <div>
       <h3>DWD-Wetterstation wählen</h3>
-      <p class="small muted">Stationen mit aktuellen Messwerten im Umkreis von 60 km. Die Auswahl gilt für die aktuellen Werte oben.</p>
+      <p class="small muted">Stationen mit aktuellen Messwerten im Umkreis von 60 km. Die Auswahl gilt für die aktuellen Werte und Sonnenauf-/-untergang oben.</p>
       <ul id="stationList" class="results"></ul>
       <div class="row end"><button type="button" class="secondary" id="btnCloseStation">Schließen</button></div>
     </div>
   </dialog>
 
-  <!-- Einstellungen -->
   <dialog id="dlgSettings">
     <form method="dialog">
       <h3>Einstellungen</h3>
