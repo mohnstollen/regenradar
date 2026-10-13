@@ -69,11 +69,15 @@
     daylen: ui('<circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/>'),
     clock: ui('<circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/>'),
     flower: ui('<circle cx="12" cy="9" r="2.2"/><path d="M12 6.8a2.6 2.6 0 1 1 2.2-3.9M14.2 9a2.6 2.6 0 1 1 1.4 4.3M12 11.2a2.6 2.6 0 1 1-2.6 3.3M9.8 9a2.6 2.6 0 1 1-1.4-4.3"/><path d="M12 13v8"/><path d="M12 18c-2 0-3.5-1-4-3"/>'),
-    air: ui('<path d="M3 9h10a3 3 0 1 0-3-3"/><path d="M3 15h14a3 3 0 1 1-3 3"/><circle cx="19" cy="9" r="1" fill="currentColor"/><circle cx="7" cy="19" r="1" fill="currentColor"/><circle cx="20" cy="13" r=".8" fill="currentColor"/>'),
     map: ui('<path d="M9 4L3 6v14l6-2 6 2 6-2V4l-6 2z"/><path d="M9 4v14M15 6v14"/>'),
     chart: ui('<path d="M3 20h18"/><path d="M4 16l5-6 4 3 6-8"/>'),
     text: ui('<path d="M4 6h16M4 11h16M4 16h10"/>'),
-    info: ui('<circle cx="12" cy="12" r="9"/><path d="M12 11v6"/><path d="M12 7.5h.01"/>')
+    calendar: ui('<rect x="3" y="5" width="18" height="16" rx="2"/><path d="M3 10h18M8 3v4M16 3v4"/>'),
+    bars: ui('<path d="M5 20V14M10 20V8M15 20V11M20 20V5"/>'),
+    play: `<svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><path d="M7 4.5v15l12-7.5z" fill="currentColor"/></svg>`,
+    pause: `<svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><rect x="6" y="5" width="4" height="14" rx="1" fill="currentColor"/><rect x="14" y="5" width="4" height="14" rx="1" fill="currentColor"/></svg>`,
+    snowflake: ui('<path d="M12 2v20M4.5 6.5l15 11M19.5 6.5l-15 11"/><path d="M9.5 3.5L12 6l2.5-2.5M9.5 20.5L12 18l2.5 2.5"/>'),
+    ice: ui('<path d="M3 20h18"/><path d="M6 20l2-4M11 20l2-4M16 20l2-4"/><path d="M12 3v8M8.5 5l7 4M15.5 5l-7 4"/>')
   };
 
   window.ICONS = { weather: (k) => WEATHER[k] || WEATHER.unknown, ui: (k) => UI[k] || '' };

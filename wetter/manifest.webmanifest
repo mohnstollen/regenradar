@@ -1,8 +1,8 @@
 {
   "id": "./",
-  "name": "Wetter – DWD & Modelle",
+  "name": "Wetter – DWD & ECMWF",
   "short_name": "Wetter",
-  "description": "Aktuelles Wetter der DWD-Station, Warnungen, Textprognose, Verlauf bis 10 Tage, Radar, Satellit, Wind, Luftqualität und Pollenflug",
+  "description": "DWD-Station, Warnungen, Regen in 2 Stunden, Textprognose, Verlauf und 10-Tage-Übersicht, Radar-Animation, Satellit, Wind und Pollenflug",
   "start_url": "./",
   "scope": "./",
   "display": "standalone",

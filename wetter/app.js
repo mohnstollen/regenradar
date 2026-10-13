@@ -1,45 +1,48 @@
-/* Wetter-App (PWA) – Version 3.3
+/* Wetter-App (PWA) – Version 3.4
  * Startseite:  Abschnitte ein-/ausblenden und sortieren (Assistent beim Erststart bzw. nach Update, Einstellungen)
  * Warnungen:   Bright Sky /alerts – nur sichtbar, wenn es Warnungen gibt
  * Aktuell:     Bright Sky /current_weather – nächste oder gewählte DWD-Station
- * Text:        Tagesprognose in Worten aus DWD ICON-D2 (Open-Meteo)
- * Verlauf:     12 h … 10 Tage; Modell wählbar; Anzeige des Modelllaufs
- * Karte:       DWD-Radar, EUMETSAT-Satellit, Windy
- * Luft:        Umweltbundesamt Air Data API – nächstgelegene aktive Messstelle
+ * Nowcast:     Bright Sky /radar (DWD RV inkl. 2-h-Vorhersage) – Regenhinweis + 5-Minuten-Diagramm
+ * Text:        Tagesprognose in Worten + Winterhinweise (Schneefallgrenze, Glätte) aus DWD ICON-D2
+ * Verlauf:     12 h … 10 Tage; Modelle DWD (ICON-D2, ICON-EU, ICON, MOSMIX) und ECMWF (IFS, AIFS)
+ *              Temperatur, gefühlte Temperatur, Taupunkt, Niederschlag, Regenwahrscheinlichkeit, Wind, Sonne
+ * Tage:        10-Tage-Übersicht aus DWD MOSMIX
+ * Karte:       DWD-Radar als Animation (−1 h bis +2 h), EUMETSAT-Satellit, Windy
  * Pollen:      DWD Pollenflug-Gefahrenindex, außerhalb DE Open-Meteo/CAMS
- * Favoriten:   Orte inkl. gewählter Station
  */
 'use strict';
-const APP_VERSION = '3.3.0';
-const WIZARD_VERSION = '3.3';   // Assistent erscheint beim ersten Start und wenn sich diese Kennung ändert
+const APP_VERSION = '3.4.0';
+const WIZARD_VERSION = '3.4';
 
 // ---------- Endpunkte ----------
 const BS = 'https://api.brightsky.dev';
 const OM = 'https://api.open-meteo.com/v1/forecast';
 const OM_META = 'https://api.open-meteo.com/data';
 const OM_AQ = 'https://air-quality-api.open-meteo.com/v1/air-quality';
-const UBA = ['https://www.umweltbundesamt.de/api/air_data/v3', 'https://www.umweltbundesamt.de/api/air_data/v2'];
 const DWD_POLLEN = 'https://opendata.dwd.de/climate_environment/health/alerts/s31fg.json';
 const DWD_WMS = 'https://maps.dwd.de/geoserver/dwd/wms';
 const DWD_RADAR = 'dwd:Niederschlagsradar';
+const DWD_RADAR_CAPS = 'https://maps.dwd.de/geoserver/dwd/Niederschlagsradar/ows?service=WMS&version=1.3.0&request=GetCapabilities';
 const SAT_WMS = 'https://view.eumetsat.int/geoserver/wms';
 const SAT_DEFAULT = { day: 'mtg_fd:rgb_truecolour', night: 'mtg_fd:ir105_hrfi' };
 const BKG_WMS = 'https://sgx.geodatenzentrum.de/wms_basemapde';
 const YEAR = new Date().getFullYear();
 const BKG_ATTR = `© GeoBasis-DE / <a href="https://www.bkg.bund.de" target="_blank" rel="noopener">BKG</a> (${YEAR}) <a href="https://creativecommons.org/licenses/by/4.0/" target="_blank" rel="noopener">CC BY 4.0</a>`;
 const OSM_ATTR = '&copy; <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noopener">OpenStreetMap</a>';
-const LS = 'wetterapp.settings.v3', LS_RAIN = 'wetterapp.rainNotified', LS_WARN = 'wetterapp.warnNotified', LS_SAT = 'wetterapp.satLayers', LS_CACHE = 'wetterapp.cache.', LS_UBA = 'wetterapp.ubaStations';
+const LS = 'wetterapp.settings.v3', LS_RAIN = 'wetterapp.rainNotified', LS_WARN = 'wetterapp.warnNotified', LS_SAT = 'wetterapp.satLayers';
 
 // ---------- Abschnitte der Startseite ----------
 const SECTIONS = [
   { id: 'warnings', name: 'Wetterwarnungen', sub: 'nur sichtbar, wenn der DWD warnt', icon: 'warn' },
   { id: 'now', name: 'Aktuelle Werte', sub: 'Station, Sonnenauf-/-untergang', icon: 'thermo' },
-  { id: 'daytext', name: 'Textprognose', sub: 'Tagesvorhersage in Worten', icon: 'text' },
+  { id: 'nowcast', name: 'Regen in 2 Stunden', sub: '5-Minuten-Vorhersage aus dem DWD-Radar', icon: 'bars' },
+  { id: 'daytext', name: 'Textprognose', sub: 'Tagesvorhersage in Worten, im Winter Glätte', icon: 'text' },
   { id: 'chart', name: 'Vorhersagediagramm', sub: '12 h bis 10 Tage, Modell wählbar', icon: 'chart' },
-  { id: 'map', name: 'Karte', sub: 'Radar, Satellit, Wind', icon: 'map' },
-  { id: 'air', name: 'Luftqualität', sub: 'Messstelle des Umweltbundesamts', icon: 'air' },
+  { id: 'days', name: '10-Tage-Übersicht', sub: 'Tageswerte als Liste', icon: 'calendar' },
+  { id: 'map', name: 'Karte', sub: 'Radar-Animation, Satellit, Wind', icon: 'map' },
   { id: 'pollen', name: 'Pollenflug', sub: 'DWD-Gefahrenindex', icon: 'flower' }
 ];
+const NEW_IN_VERSION = ['nowcast', 'days'];
 
 // ---------- Zeiträume ----------
 const RANGES = [
@@ -51,32 +54,14 @@ const RANGES = [
   { h: 240, label: '10 Tage', title: 'Die nächsten 10 Tage' }
 ];
 
-// ---------- Anbieter mit API-Key ----------
-const KEY_PROVIDERS = {
-  owm: { name: 'OpenWeatherMap', url: 'https://home.openweathermap.org/users/sign_up', free: 'kostenlos: 60 Abrufe/min, 1 Mio./Monat · 3-Stunden-Schritte, 5 Tage' },
-  weatherapi: { name: 'WeatherAPI.com', url: 'https://www.weatherapi.com/signup.aspx', free: 'kostenlos: 100.000 Abrufe/Monat · 3 Tage stündlich' },
-  tomorrow: { name: 'Tomorrow.io', url: 'https://app.tomorrow.io/signup', free: 'kostenlos: 500/Tag, 25/Stunde · 5 Tage stündlich' },
-  pirate: { name: 'Pirate Weather', url: 'https://pirateweather.net/', free: 'kostenlos: 10.000 Abrufe/Monat · 7 Tage stündlich' },
-  meteoblue: { name: 'meteoblue', url: 'https://www.meteoblue.com/de/weather-api', free: 'Free Weather API: 1 Jahr, 10 Mio. Credits · 7 Tage stündlich' }
-};
-
-// ---------- Modelle ----------
+// ---------- Modelle (nur DWD und ECMWF) ----------
 const MODELS = [
-  { key: 'icon_d2', src: 'om', group: 'DWD', name: 'DWD ICON-D2 (2 km)', maxH: 48, meta: 'dwd_icon_d2', info: 'DWD-Rohmodell, 2,2 km · alle 3 h neu · bis +48 h' },
+  { key: 'icon_d2', src: 'om', group: 'DWD', name: 'DWD ICON-D2 (2 km)', maxH: 48, meta: 'dwd_icon_d2', info: 'DWD-Regionalmodell, 2,2 km · alle 3 h neu · bis +48 h' },
+  { key: 'icon_eu', src: 'om', group: 'DWD', name: 'DWD ICON-EU (7 km)', maxH: 120, meta: 'dwd_icon_eu', info: 'DWD-Europamodell, ca. 7 km · alle 3 h neu · bis +5 Tage' },
+  { key: 'icon_seamless', src: 'om', group: 'DWD', name: 'DWD ICON kombiniert', maxH: 180, meta: 'dwd_icon_d2', info: 'DWD · ICON-D2 → ICON-EU → ICON global · bis ca. 7 Tage' },
   { key: 'mosmix', src: 'bs', group: 'DWD', name: 'DWD MOSMIX', maxH: 240, info: 'DWD · an Messstationen statistisch korrigierte Punktvorhersage · bis 10 Tage' },
-  { key: 'icon_seamless', src: 'om', group: 'DWD', name: 'DWD ICON kombiniert', maxH: 180, meta: 'dwd_icon', info: 'DWD · ICON-D2 → ICON-EU → ICON global · bis ca. 7 Tage' },
-  { key: 'ecmwf_ifs025', src: 'om', group: 'Europa', name: 'ECMWF IFS', maxH: 360, meta: 'ecmwf_ifs025', info: 'ECMWF · globales Referenzmodell · bis 15 Tage' },
-  { key: 'ecmwf_aifs025', src: 'om', group: 'Europa', name: 'ECMWF AIFS (KI-Modell)', maxH: 360, meta: 'ecmwf_aifs025_single', info: 'ECMWF · KI-basiertes Modell · bis 15 Tage' },
-  { key: 'knmi_harmonie_arome_europe', src: 'om', group: 'Europa', name: 'KNMI Harmonie (NL)', maxH: 60, meta: 'knmi_harmonie_arome_europe', info: 'Niederländischer Wetterdienst · bis ca. 2,5 Tage' },
-  { key: 'meteofrance_seamless', src: 'om', group: 'Europa', name: 'Météo-France ARPEGE/AROME', maxH: 96, meta: 'meteofrance_arpege_europe', info: 'Französischer Wetterdienst · bis 4 Tage' },
-  { key: 'ukmo_seamless', src: 'om', group: 'Weltweit', name: 'UK Met Office', maxH: 168, meta: 'ukmo_global_deterministic_10km', info: 'Britischer Wetterdienst · bis 7 Tage' },
-  { key: 'gfs_seamless', src: 'om', group: 'Weltweit', name: 'NOAA GFS (USA)', maxH: 384, meta: 'ncep_gfs025', info: 'US-Wetterdienst · bis 16 Tage' },
-  { key: 'best_match', src: 'om', group: 'Weltweit', name: 'Open-Meteo „Best Match“', maxH: 384, info: 'Open-Meteo wählt automatisch das beste Modell' },
-  { key: 'k_owm', src: 'key', prov: 'owm', group: 'Mit API-Key', name: 'OpenWeatherMap', maxH: 120, info: '3-Stunden-Schritte · bis 5 Tage' },
-  { key: 'k_weatherapi', src: 'key', prov: 'weatherapi', group: 'Mit API-Key', name: 'WeatherAPI.com', maxH: 72, info: 'stündlich · Gratis-Tarif bis 3 Tage' },
-  { key: 'k_tomorrow', src: 'key', prov: 'tomorrow', group: 'Mit API-Key', name: 'Tomorrow.io', maxH: 120, info: 'stündlich · bis 5 Tage' },
-  { key: 'k_pirate', src: 'key', prov: 'pirate', group: 'Mit API-Key', name: 'Pirate Weather', maxH: 168, info: 'stündlich · bis 7 Tage' },
-  { key: 'k_meteoblue', src: 'key', prov: 'meteoblue', group: 'Mit API-Key', name: 'meteoblue', maxH: 168, info: 'stündlich inkl. Sonnenscheindauer · bis 7 Tage' }
+  { key: 'ecmwf_ifs025', src: 'om', group: 'ECMWF', name: 'ECMWF IFS', maxH: 360, meta: 'ecmwf_ifs025', info: 'ECMWF · globales Referenzmodell · bis 15 Tage' },
+  { key: 'ecmwf_aifs025', src: 'om', group: 'ECMWF', name: 'ECMWF AIFS (KI-Modell)', maxH: 360, meta: 'ecmwf_aifs025_single', info: 'ECMWF · KI-basiertes Modell · bis 15 Tage' }
 ];
 const MOSMIX = MODELS.find(m => m.key === 'mosmix');
 
@@ -102,28 +87,19 @@ const PSTEP = { '-1': null, '0': 0, '0-1': 0.5, '1': 1, '1-2': 1.5, '2': 2, '2-3
 const PTXT = ['keine', 'keine bis gering', 'gering', 'gering bis mittel', 'mittel', 'mittel bis hoch', 'hoch'];
 const PCOL = ['#c8e6c9', '#e6ee9c', '#fff176', '#ffd54f', '#ffb74d', '#ff8a65', '#e53935'];
 
-// ---------- Luftqualität (Luftqualitätsindex des Umweltbundesamts) ----------
-// Obergrenzen in µg/m³ für: sehr gut, gut, mäßig, schlecht (darüber: sehr schlecht)
-const AQ_COMP = {
-  1: { code: 'PM10', name: 'Feinstaub PM₁₀', avg: 'Tagesmittel, stündlich gleitend', lim: [20, 35, 50, 100] },
-  9: { code: 'PM2', name: 'Feinstaub PM₂,₅', avg: 'Tagesmittel, stündlich gleitend', lim: [10, 20, 25, 50] },
-  5: { code: 'NO2', name: 'Stickstoffdioxid NO₂', avg: 'Stundenmittel', lim: [20, 40, 100, 200] },
-  3: { code: 'O3', name: 'Ozon O₃', avg: 'Stundenmittel', lim: [60, 120, 180, 240] }
-};
-const AQ_TXT = ['sehr gut', 'gut', 'mäßig', 'schlecht', 'sehr schlecht'];
-const AQ_COL = ['#2bb3a3', '#5cb85c', '#f0c419', '#e67e22', '#c0392b'];
-
 const DEFAULTS = {
   loc: null, station: null, favs: [], basemap: 'bm_grau', sat: 'auto', satDay: '', satNight: '', intervalMin: 10,
-  notify: false, warnNotify: true, autoLocate: true, mapMode: 'radar', model: 'icon_d2', rangeH: 12, keys: {},
+  notify: false, warnNotify: true, autoLocate: true, mapMode: 'radar', model: 'icon_d2', rangeH: 12,
   pollen: POLLEN.map(p => p.k), pollenRegion: 'auto', pollenHideZero: false,
-  layout: null, layoutSeen: [], wizardFor: null
+  showFeels: true, showDew: true, layout: null, layoutSeen: [], wizardFor: null
 };
 let S = (() => {
-  try { const s = Object.assign({}, DEFAULTS, JSON.parse(localStorage.getItem(LS) || '{}')); s.keys = s.keys || {}; s.favs = Array.isArray(s.favs) ? s.favs : []; return s; }
-  catch { return { ...DEFAULTS, keys: {}, favs: [] }; }
+  try { const s = Object.assign({}, DEFAULTS, JSON.parse(localStorage.getItem(LS) || '{}')); s.favs = Array.isArray(s.favs) ? s.favs : []; return s; }
+  catch { return { ...DEFAULTS, favs: [] }; }
 })();
 const isUpgrade = !!localStorage.getItem(LS) && S.wizardFor !== WIZARD_VERSION;
+if (!MODELS.some(m => m.key === S.model)) S.model = 'icon_d2';   // entfernte Modelle → Standard
+delete S.keys;
 const save = () => localStorage.setItem(LS, JSON.stringify(S));
 
 // ---------- Helpers ----------
@@ -136,15 +112,22 @@ const dirName = (deg) => deg == null ? '' : DIRS[Math.round((((deg % 360) + 360)
 const rad = (d) => d * Math.PI / 180, deg = (r) => r * 180 / Math.PI;
 const esc = (s) => String(s ?? '').replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
 const WD = ['So', 'Mo', 'Di', 'Mi', 'Do', 'Fr', 'Sa'];
-const HOUR = 3600000;
+const HOUR = 3600000, MIN = 60000;
 const dayStart = (t) => { const d = new Date(t); d.setHours(0, 0, 0, 0); return d.getTime(); };
-const ymd = (t) => { const d = new Date(t); return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`; };
+const isoZ = (t) => new Date(t).toISOString().replace(/\.\d{3}Z$/, 'Z');
 function distKm(a, b, c, d) { const x = rad(c - a), y = rad(d - b); const h = Math.sin(x / 2) ** 2 + Math.cos(rad(a)) * Math.cos(rad(c)) * Math.sin(y / 2) ** 2; return 12742 * Math.asin(Math.sqrt(h)); }
 function whenTxt(ms) {
   const d = new Date(ms), today = dayStart(Date.now());
   const day = dayStart(ms) === today ? 'heute ' : dayStart(ms) === today - 24 * HOUR ? 'gestern ' : `${WD[d.getDay()]} `;
   return `${day}${hhmm(ms)} Uhr`;
 }
+function hourTxt(ms) {
+  const today = dayStart(Date.now()), d = dayStart(ms), h = new Date(ms).getHours();
+  if (d === today) return `${h} Uhr`;
+  if (d === today + 24 * HOUR) return h < 6 ? `${h} Uhr in der Nacht` : `morgen ${h} Uhr`;
+  return `${WD[new Date(ms).getDay()]} ${h} Uhr`;
+}
+const avg = (a) => a.length ? a.reduce((x, y) => x + y, 0) / a.length : null;
 
 let toastT;
 function toast(msg, ms = 4000, action) {
@@ -160,21 +143,25 @@ async function fetchJSON(url, opts = {}) {
   if (r.headers.get('x-sw-cache') === '1') offlineHits++;
   if (!r.ok) {
     let msg = `HTTP ${r.status}`;
-    if (r.status === 401 || r.status === 403) msg += ' – API-Key ungültig oder noch nicht aktiv';
-    else if (r.status === 429) msg += ' – Abrufgrenze erreicht';
-    try { const j = await r.json(); const reason = j.reason || j.message || j.error?.message || j.error; if (reason && typeof reason === 'string') msg += ` (${reason})`; } catch { }
+    if (r.status === 429) msg += ' – Abrufgrenze erreicht';
+    try { const j = await r.json(); const reason = j.reason || j.message || j.error; if (reason && typeof reason === 'string') msg += ` (${reason})`; } catch { }
     throw new Error(msg);
   }
   const at = Number(r.headers.get('x-sw-time')) || Date.now();
   return { data: await r.json(), at };
 }
 const getJSON = async (url, opts) => (await fetchJSON(url, opts)).data;
-async function cachedJSON(url, ttlMin, cacheKey) {
-  const k = LS_CACHE + cacheKey;
-  try { const c = JSON.parse(localStorage.getItem(k) || 'null'); if (c && Date.now() - c.ts < ttlMin * 60000) return { data: c.data, at: c.ts }; } catch { }
-  const res = await fetchJSON(url);
-  try { localStorage.setItem(k, JSON.stringify({ ts: res.at, data: res.data })); } catch { }
-  return res;
+
+// Gefühlte Temperatur (Australian Apparent Temperature, Steadman) – Wind in km/h
+function apparentTemp(t, rh, windKmh) {
+  if (t == null || rh == null) return null;
+  const e = rh / 100 * 6.105 * Math.exp(17.27 * t / (237.7 + t));
+  return t + 0.33 * e - 0.70 * ((windKmh ?? 0) / 3.6) - 4.00;
+}
+function rhFromDew(t, td) {
+  if (t == null || td == null) return null;
+  const f = (x) => Math.exp(17.625 * x / (243.04 + x));
+  return Math.min(100, 100 * f(td) / f(t));
 }
 
 // ---------- Startseiten-Layout ----------
@@ -183,7 +170,6 @@ function normLayout() {
   if (!Array.isArray(S.layout)) return def;
   const known = S.layout.filter(l => SECTIONS.some(s => s.id === l.id));
   for (const s of SECTIONS) if (!known.some(l => l.id === s.id)) {
-    // neue Abschnitte an ihrer Standardposition einfügen
     const i = SECTIONS.findIndex(x => x.id === s.id), before = SECTIONS.slice(i + 1).map(x => x.id);
     const pos = known.findIndex(l => before.includes(l.id));
     known.splice(pos < 0 ? known.length : pos, 0, { id: s.id, on: true });
@@ -200,7 +186,7 @@ function applyLayout() {
   }
   if (map && isOn('map')) setTimeout(() => map.invalidateSize(), 60);
 }
-let layoutDraft = null, layoutWasOff = [];
+let layoutDraft = null, layoutWasOff = [], afterLayout = null;
 function openLayout(first = false) {
   layoutDraft = S.layout.map(l => ({ ...l }));
   layoutWasOff = S.layout.filter(l => !l.on).map(l => l.id);
@@ -212,7 +198,7 @@ function openLayout(first = false) {
 function renderLayoutList() {
   const ul = $('#layoutList'); ul.innerHTML = '';
   layoutDraft.forEach((l, i) => {
-    const s = SECTIONS.find(x => x.id === l.id), isNew = !S.layoutSeen.includes(l.id) && S.layoutSeen.length > 0;
+    const s = SECTIONS.find(x => x.id === l.id), isNew = S.layoutSeen.length > 0 && !S.layoutSeen.includes(l.id);
     const li = document.createElement('li'); li.dataset.id = l.id; li.classList.toggle('off', !l.on);
     li.innerHTML = `<span class="grip" title="Ziehen zum Verschieben">${I('grip')}</span>`
       + `<label class="lname">${I(s.icon)}<span>${esc(s.name)}${isNew ? ' <span class="new">neu</span>' : ''}<small>${esc(s.sub)}</small></span></label>`
@@ -220,7 +206,7 @@ function renderLayoutList() {
       + `<button type="button" class="mv" data-mv="1" title="Nach unten" ${i === layoutDraft.length - 1 ? 'disabled style="opacity:.35"' : ''}>${I('down')}</button>`
       + `<input type="checkbox" ${l.on ? 'checked' : ''} aria-label="${esc(s.name)} anzeigen">`;
     li.querySelector('input').onchange = (e) => { l.on = e.target.checked; li.classList.toggle('off', !l.on); commitLayout(); };
-    li.querySelector('.lname').onclick = (e) => { if (e.target.tagName !== 'INPUT') { const c = li.querySelector('input'); c.checked = !c.checked; c.onchange({ target: c }); } };
+    li.querySelector('.lname').onclick = () => { const c = li.querySelector('input'); c.checked = !c.checked; c.onchange({ target: c }); };
     li.querySelectorAll('.mv').forEach(b => b.onclick = () => {
       const j = i + Number(b.dataset.mv); if (j < 0 || j >= layoutDraft.length) return;
       [layoutDraft[i], layoutDraft[j]] = [layoutDraft[j], layoutDraft[i]]; renderLayoutList(); commitLayout();
@@ -230,8 +216,6 @@ function renderLayoutList() {
   });
 }
 function initDrag(li, handle) {
-  // Ereignisse am Fenster abhören: das Element wird während des Ziehens im DOM umgehängt,
-  // dabei ginge eine Pointer-Capture verloren
   handle.addEventListener('pointerdown', (e) => {
     e.preventDefault();
     const ul = li.parentElement; li.classList.add('dragging');
@@ -252,13 +236,12 @@ function initDrag(li, handle) {
   });
 }
 function commitLayout() { S.layout = layoutDraft.map(l => ({ ...l })); save(); applyLayout(); }
-let afterLayout = null;
 function closeLayout() {
   S.layoutSeen = SECTIONS.map(s => s.id); S.wizardFor = WIZARD_VERSION; save();
   $('#dlgLayout').close();
   if (afterLayout) { const f = afterLayout; afterLayout = null; f(); }
-  // eben eingeschaltete Abschnitte sofort laden
   if (S.layout.some(l => l.on && layoutWasOff.includes(l.id))) refresh();
+  if (!isOn('map')) stopAnim();
 }
 
 // ---------- Sonne ----------
@@ -292,7 +275,7 @@ function renderSun() {
   const now = Date.now(); let st = sunTimes(now, p.lat, p.lon), label = '';
   if (st.set && now > st.set) { st = sunTimes(now + 24 * HOUR, p.lat, p.lon); label = ' (morgen)'; }
   if (st.polar) { el.textContent = st.polar === 'day' ? 'Polartag – die Sonne geht nicht unter' : 'Polarnacht – die Sonne geht nicht auf'; return; }
-  const len = Math.round((st.set - st.rise) / 60000);
+  const len = Math.round((st.set - st.rise) / MIN);
   el.innerHTML = `<span title="Sonnenaufgang${label} · ${esc(p.name)}">${I('sunrise')}<b>${hhmm(st.rise)}</b></span>`
     + `<span title="Sonnenuntergang${label} · ${esc(p.name)}">${I('sunset')}<b>${hhmm(st.set)}</b></span>`
     + `<span class="muted" title="Tageslänge">${I('daylen')}${Math.floor(len / 60)} h ${String(len % 60).padStart(2, '0')} min${label}</span>`;
@@ -316,9 +299,11 @@ async function loadCurrent(lat, lon) {
   const wdir = c.wind_direction_10 ?? c.wind_direction_30 ?? c.wind_direction_60;
   const gust = c.wind_gust_speed_10 ?? c.wind_gust_speed_30 ?? c.wind_gust_speed_60;
   const precip = c.precipitation_60 ?? c.precipitation_30 ?? c.precipitation_10;
+  const feels = apparentTemp(c.temperature, c.relative_humidity, wind);
   $('#nowDetails').innerHTML = [
+    feels != null && Math.abs(feels - c.temperature) >= 1 && `<span>${I('thermo')}gefühlt <b>${fmt(feels, 0)} °C</b></span>`,
     wind != null && `<span>${I('wind')}<b>${fmt(wind, 0)} km/h</b> ${dirName(wdir)}${gust != null ? `, Böen ${fmt(gust, 0)}` : ''}</span>`,
-    c.relative_humidity != null && `<span>${I('drop')}<b>${fmt(c.relative_humidity, 0)} %</b></span>`,
+    c.relative_humidity != null && `<span>${I('drop')}<b>${fmt(c.relative_humidity, 0)} %</b>${c.dew_point != null ? `, Taupunkt ${fmt(c.dew_point, 0)} °C` : ''}</span>`,
     precip != null && `<span>${I('umbrella')}<b>${fmt(precip)} mm</b>/h</span>`,
     c.cloud_cover != null && `<span>${I('cloud')}<b>${fmt(c.cloud_cover, 0)} %</b></span>`,
     c.pressure_msl != null && `<span>${I('gauge')}<b>${fmt(c.pressure_msl, 0)} hPa</b></span>`
@@ -360,83 +345,57 @@ async function openStationDialog() {
 const metaCache = {};
 async function modelRun(m) {
   if (!m.meta) return null;
-  const c = metaCache[m.meta]; if (c && Date.now() - c.ts < 10 * 60000) return c.run;
+  const c = metaCache[m.meta]; if (c && Date.now() - c.ts < 10 * MIN) return c.run;
   try {
     const d = await getJSON(`${OM_META}/${m.meta}/static/meta.json`);
     const run = d.last_run_initialisation_time ? d.last_run_initialisation_time * 1000 : null;
     metaCache[m.meta] = { ts: Date.now(), run }; return run;
   } catch { metaCache[m.meta] = { ts: Date.now(), run: null }; return null; }
 }
-// Text: „Modelllauf heute 06:00 Uhr“ bzw. ohne bekannten Lauf „Datenstand …“
 const runTxt = (run, at) => run ? `Modelllauf ${whenTxt(run)}` : `Datenstand ${whenTxt(at)}`;
 
 // ---------- Vorhersage-Abruf ----------
-const ms2kmh = (v) => v == null ? null : v * 3.6;
-async function fcMosmix(lat, lon, H) {
-  const now = new Date(); now.setMinutes(0, 0, 0);
-  const to = new Date(now.getTime() + (H + 1) * HOUR);
-  const { data: d, at } = await fetchJSON(`${BS}/weather?lat=${lat.toFixed(4)}&lon=${lon.toFixed(4)}&date=${now.toISOString()}&last_date=${to.toISOString()}&tz=Europe/Berlin`);
+// Zeile: { t, temp, feels, dew, mm, pEnd, prob, sun, wind, wdir, gust, icon, cloud, code }
+let mosmixCache = null;
+async function getMosmix(lat, lon) {
+  const key = `${lat.toFixed(3)},${lon.toFixed(3)}`;
+  if (mosmixCache && mosmixCache.key === key && Date.now() - mosmixCache.ts < 15 * MIN) return mosmixCache;
+  const from = new Date(dayStart(Date.now())), to = new Date(from.getTime() + 11 * 24 * HOUR);
+  const { data: d, at } = await fetchJSON(`${BS}/weather?lat=${lat.toFixed(4)}&lon=${lon.toFixed(4)}&date=${from.toISOString()}&last_date=${to.toISOString()}&tz=Europe/Berlin`);
   const rows = (d.weather || []).map(w => {
     const t = new Date(w.timestamp).getTime();
-    return { t, temp: w.temperature, mm: w.precipitation ?? 0, pEnd: t, sun: w.sunshine ?? null, wind: w.wind_speed, wdir: w.wind_direction, gust: w.wind_gust_speed };
-  });
-  return { rows, at, run: null };
+    const rh = w.relative_humidity ?? rhFromDew(w.temperature, w.dew_point);
+    return {
+      t, temp: w.temperature, dew: w.dew_point ?? null, feels: apparentTemp(w.temperature, rh, w.wind_speed),
+      mm: w.precipitation ?? 0, pEnd: t, prob: w.precipitation_probability ?? null, sun: w.sunshine ?? null,
+      wind: w.wind_speed, wdir: w.wind_direction, gust: w.wind_gust_speed, icon: w.icon, cloud: w.cloud_cover
+    };
+  }).filter(r => r.temp != null).sort((a, b) => a.t - b.t);
+  mosmixCache = { key, ts: Date.now(), at, rows };
+  return mosmixCache;
 }
 async function omHourly(lat, lon, model, vars, days) {
   const q = new URLSearchParams({ latitude: lat.toFixed(4), longitude: lon.toFixed(4), hourly: vars.join(','), models: model, timezone: 'auto', timeformat: 'unixtime', forecast_days: String(days) });
   const { data: d, at } = await fetchJSON(`${OM}?${q}`);
   const h = d.hourly || {};
   const col = (n) => h[n] ?? h[`${n}_${model}`] ?? [];
-  return { time: h.time || [], col, at };
+  return { time: h.time || [], col, at, elevation: d.elevation };
 }
 async function fcOpenMeteo(lat, lon, H, m) {
-  const [res, run] = await Promise.all([
-    omHourly(lat, lon, m.key, ['temperature_2m', 'precipitation', 'sunshine_duration', 'wind_speed_10m', 'wind_direction_10m', 'wind_gusts_10m'], Math.min(16, Math.ceil(H / 24) + 1)),
-    modelRun(m)
-  ]);
-  const T = res.col('temperature_2m'), P = res.col('precipitation'), SD = res.col('sunshine_duration');
-  const WS = res.col('wind_speed_10m'), WDR = res.col('wind_direction_10m'), G = res.col('wind_gusts_10m');
-  const rows = res.time.map((t, i) => ({ t: t * 1000, temp: T[i], mm: P[i] ?? 0, pEnd: t * 1000, sun: SD[i] == null ? null : SD[i] / 60, wind: WS[i], wdir: WDR[i], gust: G[i] }));
+  const vars = ['temperature_2m', 'apparent_temperature', 'dew_point_2m', 'precipitation', 'precipitation_probability', 'sunshine_duration', 'wind_speed_10m', 'wind_direction_10m', 'wind_gusts_10m'];
+  const [res, run] = await Promise.all([omHourly(lat, lon, m.key, vars, Math.min(16, Math.ceil(H / 24) + 1)), modelRun(m)]);
+  const c = Object.fromEntries(vars.map(v => [v, res.col(v)]));
+  const rows = res.time.map((t, i) => ({
+    t: t * 1000, temp: c.temperature_2m[i], feels: c.apparent_temperature[i] ?? null, dew: c.dew_point_2m[i] ?? null,
+    mm: c.precipitation[i] ?? 0, pEnd: t * 1000, prob: c.precipitation_probability[i] ?? null,
+    sun: c.sunshine_duration[i] == null ? null : c.sunshine_duration[i] / 60,
+    wind: c.wind_speed_10m[i], wdir: c.wind_direction_10m[i], gust: c.wind_gusts_10m[i]
+  }));
   return { rows, at: res.at, run };
 }
-const KEY_FETCH = {
-  async owm(lat, lon, key) {
-    const { data: d, at } = await cachedJSON(`https://api.openweathermap.org/data/2.5/forecast?lat=${lat.toFixed(4)}&lon=${lon.toFixed(4)}&units=metric&appid=${encodeURIComponent(key)}`, 15, `owm_${lat.toFixed(2)}_${lon.toFixed(2)}`);
-    return { at, rows: (d.list || []).map(x => ({ t: x.dt * 1000, temp: x.main?.temp, mm: (x.rain?.['3h'] || 0) + (x.snow?.['3h'] || 0), pEnd: x.dt * 1000, sun: null, wind: ms2kmh(x.wind?.speed), wdir: x.wind?.deg, gust: ms2kmh(x.wind?.gust) })) };
-  },
-  async weatherapi(lat, lon, key) {
-    const { data: d, at } = await cachedJSON(`https://api.weatherapi.com/v1/forecast.json?key=${encodeURIComponent(key)}&q=${lat.toFixed(4)},${lon.toFixed(4)}&days=3&aqi=no&alerts=no`, 15, `wapi_${lat.toFixed(2)}_${lon.toFixed(2)}`);
-    const rows = [];
-    for (const day of d.forecast?.forecastday || []) for (const x of day.hour || []) rows.push({ t: x.time_epoch * 1000, temp: x.temp_c, mm: x.precip_mm || 0, pEnd: (x.time_epoch + 3600) * 1000, sun: null, wind: x.wind_kph, wdir: x.wind_degree, gust: x.gust_kph });
-    return { rows, at };
-  },
-  async tomorrow(lat, lon, key) {
-    const { data: d, at } = await cachedJSON(`https://api.tomorrow.io/v4/weather/forecast?location=${lat.toFixed(4)},${lon.toFixed(4)}&timesteps=1h&units=metric&apikey=${encodeURIComponent(key)}`, 20, `tio_${lat.toFixed(2)}_${lon.toFixed(2)}`);
-    return { at, rows: (d.timelines?.hourly || []).map(x => {
-      const v = x.values || {}, t = new Date(x.time).getTime();
-      const mm = v.precipitationIntensity ?? ((v.rainIntensity || 0) + (v.snowIntensity || 0) + (v.sleetIntensity || 0) + (v.freezingRainIntensity || 0));
-      return { t, temp: v.temperature, mm, pEnd: t + HOUR, sun: null, wind: ms2kmh(v.windSpeed), wdir: v.windDirection, gust: ms2kmh(v.windGust) };
-    }) };
-  },
-  async pirate(lat, lon, key) {
-    const { data: d, at } = await cachedJSON(`https://api.pirateweather.net/forecast/${encodeURIComponent(key)}/${lat.toFixed(4)},${lon.toFixed(4)}?units=si&extend=hourly&exclude=currently,minutely,daily,alerts`, 15, `pw_${lat.toFixed(2)}_${lon.toFixed(2)}`);
-    return { at, rows: (d.hourly?.data || []).map(x => ({ t: x.time * 1000, temp: x.temperature, mm: x.precipIntensity || 0, pEnd: (x.time + 3600) * 1000, sun: null, wind: ms2kmh(x.windSpeed), wdir: x.windBearing, gust: ms2kmh(x.windGust) })) };
-  },
-  async meteoblue(lat, lon, key) {
-    const { data: d, at } = await cachedJSON(`https://my.meteoblue.com/packages/basic-1h_clouds-1h?lat=${lat.toFixed(4)}&lon=${lon.toFixed(4)}&apikey=${encodeURIComponent(key)}&format=json&timeformat=timestamp_utc`, 30, `mb_${lat.toFixed(2)}_${lon.toFixed(2)}`);
-    const h = d.data_1h || {};
-    return { at, rows: (h.time || []).map((t, i) => {
-      const ms = typeof t === 'number' ? t * 1000 : new Date(String(t).replace(' ', 'T') + 'Z').getTime() - (d.metadata?.utc_timeoffset || 0) * HOUR;
-      return { t: ms, temp: h.temperature?.[i], mm: h.precipitation?.[i] || 0, pEnd: ms, sun: h.sunshinetime?.[i] ?? null, wind: ms2kmh(h.windspeed?.[i]), wdir: h.winddirection?.[i], gust: null };
-    }) };
-  }
-};
 async function fetchModel(m, lat, lon, H) {
-  if (m.src === 'bs') return fcMosmix(lat, lon, H);
-  if (m.src === 'om') return fcOpenMeteo(lat, lon, H, m);
-  const key = (S.keys[m.prov] || '').trim();
-  if (!key) throw new Error(`kein API-Key für ${KEY_PROVIDERS[m.prov].name}`);
-  return { ...(await KEY_FETCH[m.prov](lat, lon, key)), run: null };
+  if (m.src === 'bs') { const r = await getMosmix(lat, lon); return { rows: r.rows, at: r.at, run: null }; }
+  return fcOpenMeteo(lat, lon, H, m);
 }
 
 // ---------- Verlauf ----------
@@ -455,42 +414,67 @@ async function loadForecast(lat, lon) {
     console.warn(`${m.name}: ${e.message} – Rückfall auf MOSMIX`);
     used = MOSMIX; res = await fetchModel(MOSMIX, lat, lon, R.h);
   }
-  if (seq !== fcSeq) return;
   const start = new Date(); start.setMinutes(0, 0, 0);
   const t0 = start.getTime(), t1 = t0 + R.h * HOUR;
-  const rows = res.rows.filter(r => r.temp != null && r.t >= t0 - 3 * HOUR && r.t <= t1 + 3 * HOUR).sort((a, b) => a.t - b.t);
+  let rows = res.rows.filter(r => r.temp != null && r.t >= t0 - 3 * HOUR && r.t <= t1 + 3 * HOUR).map(r => ({ ...r })).sort((a, b) => a.t - b.t);
   if (rows.filter(r => r.t >= t0 && r.t <= t1).length < 2) throw new Error(`${used.name} liefert für diesen Ort keine Daten`);
+  // Regenwahrscheinlichkeit: liefert das Modell keine, aus DWD MOSMIX ergänzen
+  let probSrc = used.name;
+  if (!rows.some(r => r.prob != null && r.t >= t0 && r.t <= t1)) {
+    try {
+      const mm = await getMosmix(lat, lon), pm = new Map(mm.rows.map(r => [r.t, r.prob]));
+      rows.forEach(r => { r.prob = pm.get(r.t) ?? null; });
+      probSrc = 'DWD MOSMIX';
+    } catch { probSrc = null; }
+  }
+  if (seq !== fcSeq) return;
   $('#modelInfo').innerHTML = `${I('clock')} <span><b>${esc(used.name)}</b> · ${runTxt(res.run, res.at)}</span>`;
   $('#modelInfo').title = used.info;
-  drawChart(rows, t0, t1, used);
+  drawChart(rows, t0, t1, used, probSrc);
+}
+
+function renderLegend(hasF, hasD) {
+  const box = $('#chartLegend');
+  const item = (key, cls, label, has, color, style) => `<button type="button" data-k="${key}" class="${S[key] && has ? '' : 'off'}" ${has ? '' : 'disabled title="vom Modell nicht geliefert"'}><i style="border-top-color:${color};border-top-style:${style}"></i>${label}</button>`;
+  box.innerHTML = `<button type="button" disabled style="opacity:1"><i style="border-top-color:var(--temp)"></i>Temperatur</button>`
+    + item('showFeels', 'f', 'gefühlt', hasF, 'var(--feels)', 'dashed')
+    + item('showDew', 'd', 'Taupunkt', hasD, 'var(--dew)', 'dotted');
+  box.querySelectorAll('button[data-k]').forEach(b => b.onclick = () => { S[b.dataset.k] = !S[b.dataset.k]; save(); if (lastChart) drawChart(...lastChart); });
 }
 
 let lastChart = null;
-function drawChart(rows, t0, t1, model) {
-  lastChart = [rows, t0, t1, model];
+function drawChart(rows, t0, t1, model, probSrc) {
+  lastChart = [rows, t0, t1, model, probSrc];
   const H = (t1 - t0) / HOUR;
   const W = Math.max(300, Math.round($('#chart').clientWidth || 680)), PADL = 34, PADR = 16;
   const plotW = W - PADL - PADR, pph = plotW / H;
-  const TOP = 22, TH = W < 500 ? 120 : 140;
+  const TOP = 22, TH = W < 500 ? 130 : 150;
   const XL = TOP + TH + 15;
   const hourStep = H <= 12 ? null : [3, 6, 12].find(s => s * pph >= 24);
   const XD = H > 12 && hourStep ? XL + 15 : XL;
   const RAIN_Y = XD + 32, RAIN_H = 34;
-  const WIND_Y = RAIN_Y + RAIN_H + 26, WIND_H = 34;
+  const PROB_Y = RAIN_Y + RAIN_H + 26, PROB_H = 16;
+  const WIND_Y = PROB_Y + PROB_H + 26, WIND_H = 34;
   const SUN_Y = WIND_Y + WIND_H + 30, SUN_H = 22;
   const HGT = SUN_Y + SUN_H + 18;
   const x = (t) => PADL + (t - t0) / (t1 - t0) * plotW;
 
   const tp = rows.filter(r => r.t >= t0 && r.t <= t1);
+  const hasF = rows.some(r => r.feels != null), hasD = rows.some(r => r.dew != null);
+  const showF = S.showFeels && hasF, showD = S.showDew && hasD;
+  renderLegend(hasF, hasD);
   const temps = tp.map(r => r.temp);
-  let tmin = Math.floor(Math.min(...temps) - 1), tmax = Math.ceil(Math.max(...temps) + 1);
+  const all = tp.flatMap(r => [r.temp, showF ? r.feels : null, showD ? r.dew : null]).filter(v => v != null);
+  let tmin = Math.floor(Math.min(...all) - 1), tmax = Math.ceil(Math.max(...all) + 1);
   if (tmax - tmin < 6) { const mid = (tmax + tmin) / 2; tmin = Math.floor(mid - 3); tmax = Math.ceil(mid + 3); }
   const y = (v) => TOP + TH - (v - tmin) / (tmax - tmin) * TH;
   let svg = '';
   const tickStep = (tmax - tmin) > 20 ? 5 : (tmax - tmin) > 9 ? 2 : 1;
   for (let v = Math.ceil(tmin / tickStep) * tickStep; v <= tmax; v += tickStep)
     svg += `<line class="grid" x1="${PADL}" x2="${W - PADR}" y1="${y(v)}" y2="${y(v)}"/><text class="rowlbl" x="${PADL - 5}" y="${y(v) + 3}" text-anchor="end">${v}°</text>`;
+  if (tmin < 0 && tmax > 0) svg += `<line x1="${PADL}" x2="${W - PADR}" y1="${y(0)}" y2="${y(0)}" stroke="#4dabf7" stroke-width="1" stroke-dasharray="4 3"/>`;
 
+  // Zeitachse
   if (H <= 12) {
     const step = 3 * pph >= 48 ? 3 : 6;
     for (let t = t0; t <= t1; t += step * HOUR) {
@@ -518,10 +502,18 @@ function drawChart(rows, t0, t1, model) {
     }
   }
 
-  const pts = rows.map(r => [x(r.t), y(r.temp)]);
-  const path = pts.map((p, i) => { if (!i) return `M${p[0]},${p[1]}`; const p0 = pts[i - 1], cx = (p0[0] + p[0]) / 2; return `C${cx},${p0[1]} ${cx},${p[1]} ${p[0]},${p[1]}`; }).join(' ');
-  svg += `<defs><clipPath id="clipT"><rect x="${PADL}" y="0" width="${plotW}" height="${TOP + TH}"/></clipPath></defs>`;
-  svg += `<g clip-path="url(#clipT)"><path class="tarea" d="${path} L${pts[pts.length - 1][0]},${TOP + TH} L${pts[0][0]},${TOP + TH} Z"/><path class="tline" d="${path}"/></g>`;
+  // Kurven
+  const curve = (key) => {
+    const pts = rows.filter(r => r[key] != null).map(r => [x(r.t), y(r[key])]);
+    if (pts.length < 2) return { d: '', pts };
+    return { pts, d: pts.map((p, i) => { if (!i) return `M${p[0]},${p[1]}`; const p0 = pts[i - 1], cx = (p0[0] + p[0]) / 2; return `C${cx},${p0[1]} ${cx},${p[1]} ${p[0]},${p[1]}`; }).join(' ') };
+  };
+  const T = curve('temp');
+  svg += `<defs><clipPath id="clipT"><rect x="${PADL}" y="0" width="${plotW}" height="${TOP + TH}"/></clipPath></defs><g clip-path="url(#clipT)">`;
+  svg += `<path class="tarea" d="${T.d} L${T.pts[T.pts.length - 1][0]},${TOP + TH} L${T.pts[0][0]},${TOP + TH} Z"/>`;
+  if (showD) svg += `<path class="dline" d="${curve('dew').d}"/>`;
+  if (showF) svg += `<path class="fline" d="${curve('feels').d}"/>`;
+  svg += `<path class="tline" d="${T.d}"/></g>`;
   const label = (r, cls = '') => `<circle class="tdot" cx="${x(r.t)}" cy="${y(r.temp)}" r="3.5"/><text class="tlbl ${cls}" x="${Math.min(Math.max(x(r.t), PADL + 10), W - PADR - 8)}" y="${cls === 'min' ? y(r.temp) + 16 : y(r.temp) - 9}">${fmt(r.temp, 0)}°</text>`;
   if (H <= 12) {
     const iMin = temps.indexOf(Math.min(...temps)), iMax = temps.indexOf(Math.max(...temps));
@@ -538,6 +530,7 @@ function drawChart(rows, t0, t1, model) {
     }
   }
 
+  // Zeitblöcke
   const B = H <= 12 ? (pph >= 22 ? 1 : 2) : [3, 6, 12, 24].find(b => b * pph >= 22) || 24;
   const buckets = [];
   if (B === 24) { for (let t = dayStart(t0); t < t1; t += 24 * HOUR) buckets.push([Math.max(t, t0), Math.min(t + 24 * HOUR, t1)]); }
@@ -547,10 +540,10 @@ function drawChart(rows, t0, t1, model) {
     for (; t < t1; t += B * HOUR) buckets.push([t, Math.min(t + B * HOUR, t1)]);
   }
   const stat = buckets.map(([a, b]) => {
-    let mm = 0, sun = 0, sunN = 0, u = 0, v = 0, ws = 0, wn = 0, gust = null;
+    let mm = 0, sun = 0, sunN = 0, u = 0, v = 0, ws = 0, wn = 0, gust = null, prob = null;
     for (const r of rows) {
       const e = r.pEnd - 1;
-      if (e >= a && e < b) { mm += r.mm || 0; if (r.sun != null) { sun += r.sun; sunN++; } }
+      if (e >= a && e < b) { mm += r.mm || 0; if (r.sun != null) { sun += r.sun; sunN++; } if (r.prob != null) prob = Math.max(prob ?? 0, r.prob); }
       if (r.t > a && r.t <= b && r.wind != null) {
         ws += r.wind; wn++;
         if (r.wdir != null) { u += r.wind * Math.sin(rad(r.wdir)); v += r.wind * Math.cos(rad(r.wdir)); }
@@ -558,22 +551,28 @@ function drawChart(rows, t0, t1, model) {
       }
     }
     const wdir = (u || v) ? (deg(Math.atan2(u, v)) + 360) % 360 : null;
-    return { a, b, mm, sun: sunN ? sun : null, hrs: (b - a) / HOUR, wind: wn ? ws / wn : null, wdir, gust };
+    return { a, b, mm, prob, sun: sunN ? sun : null, hrs: (b - a) / HOUR, wind: wn ? ws / wn : null, wdir, gust };
   });
   const blk = B === 24 ? 'je Tag' : B > 1 ? `je ${B} h` : '';
-  const hasSun = stat.some(s => s.sun != null), hasWind = stat.some(s => s.wind != null);
+  const hasSun = stat.some(s => s.sun != null), hasWind = stat.some(s => s.wind != null), hasProb = stat.some(s => s.prob != null);
   const sunHrs = B >= 6;
   svg += `<text class="rowlbl" x="0" y="${RAIN_Y - 16}">Niederschlag (mm${blk ? ' ' + blk : ''})</text>`;
-  const rmax = Math.max(1, ...stat.map(s => s.mm));
+  svg += `<text class="rowlbl" x="0" y="${PROB_Y - 7}">Regenwahrscheinlichkeit (%${blk ? ', höchster Wert ' + blk : ''})${!hasProb ? ' – nicht verfügbar' : probSrc && probSrc !== model.name ? ` · aus ${probSrc}` : ''}</text>`;
   svg += `<text class="rowlbl" x="0" y="${WIND_Y - 8}">Wind (km/h${blk ? ', Mittel ' + blk : ''}) · Pfeil zeigt Zugrichtung${hasWind ? '' : ' – nicht geliefert'}</text>`;
   svg += `<text class="rowlbl" x="0" y="${SUN_Y - 8}">Sonnenschein (${sunHrs ? 'h' : 'min'}${blk ? ' ' + blk : ''})${hasSun ? '' : ' – vom Modell nicht geliefert'}</text>`;
+  const rmax = Math.max(1, ...stat.map(s => s.mm));
   const windCol = (k) => k < 12 ? '#7a8a9c' : k < 29 ? '#1c7ed6' : k < 50 ? '#e67700' : k < 75 ? '#e03131' : '#9c36b5';
   for (const s of stat) {
-    const cx = (x(s.a) + x(s.b)) / 2, bw = Math.min((x(s.b) - x(s.a)) * 0.72, 34);
-    const showTxt = (x(s.b) - x(s.a)) >= 17;
+    const cx = (x(s.a) + x(s.b)) / 2, cw = x(s.b) - x(s.a), bw = Math.min(cw * 0.72, 34);
+    const showTxt = cw >= 17;
     const rh = s.mm > 0 ? Math.max(2, s.mm / rmax * RAIN_H) : 0;
     svg += `<line class="grid" x1="${cx - bw / 2}" x2="${cx + bw / 2}" y1="${RAIN_Y + RAIN_H}" y2="${RAIN_Y + RAIN_H}"/>`;
     if (rh) { svg += `<rect class="rbar" x="${cx - bw / 2}" y="${RAIN_Y + RAIN_H - rh}" width="${bw}" height="${rh}" rx="2"/>`; if (showTxt && s.mm >= 0.05) svg += `<text class="rval" x="${cx}" y="${RAIN_Y + RAIN_H - rh - 3}">${fmt(s.mm, s.mm >= 10 ? 0 : 1)}</text>`; }
+    if (s.prob != null) {
+      const p = Math.round(s.prob), op = 0.08 + 0.8 * p / 100, dark = p >= 55;
+      svg += `<rect x="${cx - Math.min(cw - 2, 30) / 2}" y="${PROB_Y}" width="${Math.min(cw - 2, 30)}" height="${PROB_H}" rx="3" fill="#3d8bfd" fill-opacity="${op.toFixed(2)}"><title>Regenwahrscheinlichkeit ${p} %</title></rect>`;
+      if (showTxt) svg += `<text class="pval" x="${cx}" y="${PROB_Y + 11.5}" fill="${dark ? '#fff' : 'currentColor'}">${p}</text>`;
+    }
     if (s.wind != null) {
       const col = windCol(s.wind), sc = Math.min(1.25, 0.8 + s.wind / 60);
       if (s.wdir != null) svg += `<g transform="translate(${cx} ${WIND_Y + 8}) rotate(${(s.wdir + 180) % 360}) scale(${sc})"><title>${fmt(s.wind, 0)} km/h aus ${dirName(s.wdir)}${s.gust != null ? `, Böen ${fmt(s.gust, 0)} km/h` : ''}</title><path d="M0,-8 L5.5,6 L0,3 L-5.5,6 Z" fill="${col}"/></g>`;
@@ -585,23 +584,17 @@ function drawChart(rows, t0, t1, model) {
     if (sh) svg += `<rect class="sbar" x="${cx - bw / 2}" y="${SUN_Y + SUN_H - sh}" width="${bw}" height="${sh}" rx="2"/>`;
     if (sv >= 1 && showTxt) svg += `<text class="sval" x="${cx}" y="${SUN_Y + SUN_H + 12}">${sunHrs ? fmt(sv / 60, 1) : fmt(sv, 0)}</text>`;
   }
-  $('#chart').innerHTML = `<svg viewBox="0 0 ${W} ${HGT}" width="${W}" height="${HGT}" role="img">${svg}</svg>`;
+  $('#chart').innerHTML = `<svg viewBox="0 0 ${W} ${HGT}" width="${W}" height="${HGT}" role="img" style="color:var(--text)">${svg}</svg>`;
   const rain = stat.reduce((a, s) => a + s.mm, 0), sun = stat.reduce((a, s) => a + (s.sun || 0), 0);
-  const gmax = Math.max(0, ...stat.map(s => s.gust ?? 0));
+  const gmax = Math.max(0, ...stat.map(s => s.gust ?? 0)), pmax = Math.max(-1, ...stat.map(s => s.prob ?? -1));
   const sunTxt = !hasSun ? '–' : sun >= 60 ? `${fmt(sun / 60, 1)} h` : `${fmt(sun, 0)} min`;
-  $('#chartInfo').textContent = `Summe: ${fmt(rain)} mm Niederschlag · ${sunTxt} Sonne · Min ${fmt(Math.min(...temps), 0)}° / Max ${fmt(Math.max(...temps), 0)}°${gmax ? ` · Böen bis ${fmt(gmax, 0)} km/h` : ''}`;
+  $('#chartInfo').textContent = `Summe: ${fmt(rain)} mm Niederschlag${pmax >= 0 ? ` (Risiko bis ${fmt(pmax, 0)} %)` : ''} · ${sunTxt} Sonne · Min ${fmt(Math.min(...temps), 0)}° / Max ${fmt(Math.max(...temps), 0)}°${gmax ? ` · Böen bis ${fmt(gmax, 0)} km/h` : ''}`;
 }
 function initForecastControls() {
   const sel = $('#modelSelect'), groups = {};
   for (const m of MODELS) (groups[m.group] ||= []).push(m);
-  const fill = () => {
-    sel.innerHTML = Object.entries(groups).map(([g, list]) => `<optgroup label="${esc(g)}">${list.map(m => {
-      const miss = m.src === 'key' && !(S.keys[m.prov] || '').trim();
-      return `<option value="${m.key}" title="${esc(m.info)}">${esc(m.name)}${miss ? ' (Key fehlt)' : ''}</option>`;
-    }).join('')}</optgroup>`).join('');
-    sel.value = currentModel().key;
-  };
-  fill(); initForecastControls.refill = fill;
+  sel.innerHTML = Object.entries(groups).map(([g, list]) => `<optgroup label="${esc(g)}">${list.map(m => `<option value="${m.key}" title="${esc(m.info)}">${esc(m.name)}</option>`).join('')}</optgroup>`).join('');
+  sel.value = currentModel().key;
   sel.onchange = () => { S.model = sel.value; save(); reloadForecast(); };
   const seg = $('#rangeSeg');
   seg.innerHTML = RANGES.map(r => `<button type="button" data-h="${r.h}" title="${r.title}" class="${r.h === S.rangeH ? 'active' : ''}"><span class="long">${r.label}</span><span class="short">${r.h === 12 ? '12 h' : r.h / 24 + ' T'}</span></button>`).join('');
@@ -615,24 +608,75 @@ function initForecastControls() {
 function reloadForecast() { if (S.loc) loadForecast(S.loc.lat, S.loc.lon).catch(showForecastError); }
 function showForecastError(e) { $('#chart').innerHTML = ''; $('#chartInfo').textContent = `Vorhersage nicht abrufbar (${e.message}).`; }
 
-// ---------- Textprognose (ICON-D2) ----------
+// ---------- 10-Tage-Übersicht (DWD MOSMIX) ----------
+function dayIcon(list) {
+  const day = list.filter(r => { const h = new Date(r.t).getHours(); return h >= 7 && h <= 19; });
+  const L = day.length ? day : list;
+  const cnt = (k) => L.filter(r => r.icon === k).length;
+  const mm = list.reduce((a, r) => a + (r.mm || 0), 0);
+  if (cnt('thunderstorm') >= 1) return 'thunderstorm';
+  if (mm >= 0.5) {
+    if (cnt('snow') >= 3) return 'snow';
+    if (cnt('sleet') >= 3) return 'sleet';
+    return L.filter(r => (r.mm || 0) >= 0.1).length >= 5 ? 'rain' : 'showers';
+  }
+  if (cnt('fog') >= 4) return 'fog';
+  const cl = avg(L.map(r => r.cloud).filter(v => v != null));
+  if (cl == null) { const c = { 'clear-day': cnt('clear-day'), 'partly-cloudy-day': cnt('partly-cloudy-day'), cloudy: cnt('cloudy') }; return Object.entries(c).sort((a, b) => b[1] - a[1])[0][0]; }
+  return cl < 25 ? 'clear-day' : cl < 70 ? 'partly-cloudy-day' : 'cloudy';
+}
+async function loadDays(lat, lon) {
+  const { rows, at } = await getMosmix(lat, lon);
+  const today = dayStart(Date.now()), groups = new Map();
+  for (const r of rows) { const d = dayStart(r.t - 1); if (d >= today) (groups.get(d) || groups.set(d, []).get(d)).push(r); }
+  const days = [...groups.entries()].filter(([, l]) => l.length >= 12).slice(0, 10).map(([d, l]) => ({
+    d, tmin: Math.min(...l.map(r => r.temp)), tmax: Math.max(...l.map(r => r.temp)),
+    mm: l.reduce((a, r) => a + (r.mm || 0), 0), prob: l.some(r => r.prob != null) ? Math.max(...l.map(r => r.prob ?? 0)) : null,
+    sun: l.some(r => r.sun != null) ? l.reduce((a, r) => a + (r.sun || 0), 0) : null,
+    gust: Math.max(0, ...l.map(r => r.gust ?? 0)), icon: dayIcon(l)
+  }));
+  if (!days.length) throw new Error('keine Tageswerte');
+  const gmin = Math.min(...days.map(d => d.tmin)), gmax = Math.max(...days.map(d => d.tmax)), span = Math.max(1, gmax - gmin);
+  const box = $('#daysList'); box.className = 'days';
+  box.innerHTML = days.map(x => {
+    const dt = new Date(x.d), name = x.d === today ? 'Heute' : x.d === today + 24 * HOUR ? 'Morgen' : WD[dt.getDay()];
+    const rain = x.mm >= 0.1 ? `<b>${fmt(x.mm, x.mm >= 10 ? 0 : 1)} mm</b>` : 'trocken';
+    const extra = [x.prob != null && x.prob >= 10 ? `${fmt(x.prob, 0)} %` : '', x.sun != null ? `${fmt(x.sun / 60, 1)} h Sonne` : '', x.gust >= 50 ? `Böen ${fmt(x.gust, 0)}` : ''].filter(Boolean).join(' · ');
+    const l = (x.tmin - gmin) / span * 100, w = Math.max(4, (x.tmax - x.tmin) / span * 100);
+    return `<div class="day"><div class="dname">${name}<small>${dt.getDate()}.${dt.getMonth() + 1}.</small></div>`
+      + `<div class="dico" title="${esc(ICON_TXT[x.icon] || '')}">${window.ICONS.weather(x.icon)}</div>`
+      + `<div class="drain">${rain}${extra ? `<br>${extra}` : ''}</div>`
+      + `<div class="dtemp"><span class="mn">${fmt(x.tmin, 0)}°</span><div class="tbar"><i style="left:${l.toFixed(1)}%;width:${w.toFixed(1)}%"></i></div><span class="mx">${fmt(x.tmax, 0)}°</span></div></div>`;
+  }).join('');
+  $('#daysInfo').textContent = `DWD MOSMIX · Datenstand ${whenTxt(at)} · Prozent = höchste stündliche Regenwahrscheinlichkeit`;
+}
+
+// ---------- Textprognose + Winterhinweise (ICON-D2) ----------
 async function loadDayText(lat, lon) {
-  const vars = ['temperature_2m', 'precipitation', 'weather_code', 'cloud_cover', 'wind_speed_10m', 'wind_gusts_10m'];
+  const vars = ['temperature_2m', 'dew_point_2m', 'precipitation', 'snowfall', 'weather_code', 'cloud_cover', 'wind_speed_10m', 'wind_gusts_10m', 'snowfall_height', 'freezing_level_height'];
   let model = MODELS.find(m => m.key === 'icon_d2'), res;
   const get = async (m) => {
     const r = await omHourly(lat, lon, m.key, vars, 3);
-    const rows = r.time.map((t, i) => ({ t: t * 1000, temp: r.col('temperature_2m')[i], mm: r.col('precipitation')[i] ?? 0, code: r.col('weather_code')[i], cloud: r.col('cloud_cover')[i], wind: r.col('wind_speed_10m')[i], gust: r.col('wind_gusts_10m')[i] })).filter(x => x.temp != null);
+    const c = Object.fromEntries(vars.map(v => [v, r.col(v)]));
+    const rows = r.time.map((t, i) => ({
+      t: t * 1000, temp: c.temperature_2m[i], dew: c.dew_point_2m[i], mm: c.precipitation[i] ?? 0, snow: c.snowfall[i] ?? 0,
+      code: c.weather_code[i], cloud: c.cloud_cover[i], wind: c.wind_speed_10m[i], gust: c.wind_gusts_10m[i],
+      snowH: c.snowfall_height[i] ?? null, frzH: c.freezing_level_height[i] ?? null
+    })).filter(x => x.temp != null);
     if (rows.length < 12) throw new Error('keine Daten');
-    return { rows, at: r.at };
+    return { rows, at: r.at, elevation: r.elevation };
   };
   try { res = await get(model); }
   catch { model = MODELS.find(m => m.key === 'icon_seamless'); res = await get(model); }
   const run = await modelRun(model);
   const out = buildDayText(res.rows, Date.now());
-  if (!out) { $('#dayText').textContent = 'Keine Textprognose verfügbar.'; $('#dayIcon').innerHTML = ''; $('#daySource').textContent = ''; return; }
-  $('#dayIcon').innerHTML = window.ICONS.weather(out.icon);
-  $('#dayText').textContent = out.text;
-  $('#daySource').textContent = `${model.name.replace(' (2 km)', '')} · ${runTxt(run, res.at)}`;
+  if (!out) { $('#dayText').textContent = 'Keine Textprognose verfügbar.'; $('#dayIcon').innerHTML = ''; $('#daySource').textContent = ''; }
+  else {
+    $('#dayIcon').innerHTML = window.ICONS.weather(out.icon);
+    $('#dayText').textContent = out.text;
+    $('#daySource').textContent = `${model.name.replace(' (2 km)', '')} · ${runTxt(run, res.at)}`;
+  }
+  renderWinter(buildWinter(res.rows, res.elevation, Date.now()));
 }
 function buildDayText(rows, now) {
   const tomorrow = new Date(now).getHours() >= 20;
@@ -644,10 +688,10 @@ function buildDayText(rows, now) {
     const from = Math.max(base + p.a * HOUR, tomorrow ? 0 : now), to = base + p.b * HOUR;
     const list = rows.filter(r => r.t > from && r.t <= to);
     if (list.length < 2) continue;
-    const avg = (f) => { const v = list.map(f).filter(x => x != null); return v.length ? v.reduce((a, b) => a + b, 0) / v.length : null; };
+    const av = (f) => avg(list.map(f).filter(x => x != null));
     const codes = list.map(r => r.code).filter(c => c != null);
     periods.push({
-      k: p.k, list, mm: list.reduce((a, r) => a + (r.mm || 0), 0), cloud: avg(r => r.cloud), wind: avg(r => r.wind),
+      k: p.k, list, mm: list.reduce((a, r) => a + (r.mm || 0), 0), cloud: av(r => r.cloud), wind: av(r => r.wind),
       gust: Math.max(0, ...list.map(r => r.gust ?? 0)), codes,
       fog: codes.filter(c => c === 45 || c === 48).length >= list.length / 2,
       tmax: Math.max(...list.map(r => r.temp)), tmin: Math.min(...list.map(r => r.temp))
@@ -702,6 +746,58 @@ function buildDayText(rows, now) {
   const icon = main.wet ? ICON_OF[main.wet] : main.fog ? 'fog' : (main.cloud ?? 50) < 20 ? (main.k === 'A' ? 'clear-night' : 'clear-day') : (main.cloud ?? 50) < 75 ? (main.k === 'A' ? 'partly-cloudy-night' : 'partly-cloudy-day') : 'cloudy';
   return { text: text.replace(/\s+/g, ' ').trim(), icon };
 }
+// Winterhinweise für die nächsten 30 Stunden
+function buildWinter(rows, elev, now) {
+  const win = rows.filter(r => r.t > now && r.t <= now + 30 * HOUR);
+  if (!win.length) return [];
+  const out = [];
+  const elevR = elev != null ? Math.round(elev / 10) * 10 : null;
+  const round100 = (v) => Math.max(0, Math.round(v / 100) * 100);
+  // Schneefallgrenze – nur wenn Niederschlag erwartet wird
+  const wet = win.filter(r => (r.mm || 0) >= 0.1);
+  const sh = wet.map(r => r.snowH ?? (r.frzH != null ? r.frzH - 300 : null)).filter(v => v != null);
+  if (wet.length && sh.length && Math.min(...sh) < 1500) {
+    const lo = round100(Math.min(...sh)), hi = round100(Math.max(...sh));
+    let t = `Schneefallgrenze ${lo === hi ? `um ${lo}` : `zwischen ${lo} und ${hi}`} m`;
+    if (elevR != null) {
+      t += ` (Standort ${elevR} m)`;
+      t += lo <= elevR ? ' – Schnee bzw. Schneeregen bis in den Ort' : lo <= elevR + 300 ? ' – Schnee knapp oberhalb des Ortes, im Ort Regen oder Schneeregen' : ' – im Ort Regen';
+    }
+    out.push({ icon: 'snowflake', text: t + '.' });
+  }
+  // Glätte
+  const firstOf = (pred) => { for (let i = 0; i < win.length; i++) if (pred(win[i], i)) return win[i].t; return null; };
+  const isSnowCode = (c) => (c >= 71 && c <= 77) || c === 85 || c === 86;
+  const all = rows.filter(r => r.t > now - 6 * HOUR && r.t <= now + 30 * HOUR);
+  const hz = [];
+  const tFrz = firstOf(r => [56, 57, 66, 67].includes(r.code));
+  if (tFrz) hz.push({ t: tFrz, why: 'gefrierenden Regen (Glatteis)' });
+  const tSnow = firstOf(r => ((r.snow || 0) > 0 || isSnowCode(r.code)) && r.temp <= 1.5);
+  if (tSnow) hz.push({ t: tSnow, why: 'Schnee' });
+  const tWet = firstOf(r => r.temp <= 0 && all.some(p => p.t < r.t && p.t >= r.t - 6 * HOUR && (p.mm || 0) >= 0.1 && p.temp > 0));
+  if (tWet) hz.push({ t: tWet, why: 'überfrierende Nässe' });
+  const tRime = firstOf(r => r.temp <= 0 && r.dew != null && r.temp - r.dew <= 1.5 && (r.mm || 0) < 0.1);
+  if (tRime) hz.push({ t: tRime, why: 'Reif' });
+  if (hz.length) {
+    hz.sort((a, b) => a.t - b.t);
+    out.push({ icon: 'ice', cls: 'ice', text: `Glättegefahr ab ${hourTxt(hz[0].t)} durch ${hz.map(h => h.why).filter((v, i, a) => a.indexOf(v) === i).join(', ')}.` });
+  }
+  // Frost
+  const tmin = Math.min(...win.map(r => r.temp));
+  if (tmin <= 0) {
+    const tm = win.find(r => r.temp === tmin).t, t0f = firstOf(r => r.temp <= 0);
+    out.push({ icon: 'thermo', text: `Frost ab ${hourTxt(t0f)}, Tiefstwert ${fmt(tmin, 0)} °C gegen ${hourTxt(tm)}.` });
+  } else if (tmin <= 3) {
+    out.push({ icon: 'thermo', text: `Bodenfrost möglich – Tiefstwert in 2 m Höhe ${fmt(tmin, 0)} °C.` });
+  }
+  return out;
+}
+function renderWinter(items) {
+  const box = $('#winterHint');
+  if (!items.length) { box.hidden = true; box.innerHTML = ''; return; }
+  box.hidden = false;
+  box.innerHTML = items.map(i => `<div class="${i.cls || ''}">${I(i.icon)}<span>${esc(i.text)}</span></div>`).join('');
+}
 
 // ---------- Warnungen ----------
 const sevRank = (s) => ({ minor: 1, moderate: 2, severe: 3, extreme: 4 }[s] || 0);
@@ -732,95 +828,13 @@ async function loadWarnings(lat, lon) {
   }
 }
 
-// ---------- Luftqualität (Umweltbundesamt) ----------
-let ubaBase = null;
-async function ubaJSON(path) {
-  const bases = ubaBase ? [ubaBase] : UBA;
-  let err;
-  for (const b of bases) {
-    try { const r = await fetchJSON(`${b}${path}`); ubaBase = b; return r; } catch (e) { err = e; }
-  }
-  throw err;
-}
-// Stationsliste (einmal pro Woche): [{ id, code, name, city, lat, lon }]
-async function ubaStations() {
-  try { const c = JSON.parse(localStorage.getItem(LS_UBA) || 'null'); if (c && Date.now() - c.ts < 7 * 86400000 && c.list?.length) return c.list; } catch { }
-  const { data: d } = await ubaJSON('/stations/json?use=airquality&lang=de');
-  const idx = Array.isArray(d.indices) ? d.indices.map(s => String(s).toLowerCase()) : [];
-  const pos = (re, fb) => { const i = idx.findIndex(s => re.test(s)); return i >= 0 ? i : fb; };
-  const P = { id: pos(/station id/, 0), code: pos(/station code/, 1), name: pos(/station name/, 2), city: pos(/station city/, 3), to: pos(/active to/, 6), lon: pos(/longitude/, 7), lat: pos(/latitude/, 8) };
-  const list = [];
-  for (const row of Object.values(d.data || {})) {
-    if (!Array.isArray(row)) continue;
-    const lat = parseFloat(row[P.lat]), lon = parseFloat(row[P.lon]);
-    if (!isFinite(lat) || !isFinite(lon)) continue;
-    const to = row[P.to]; if (to && String(to).trim() && new Date(String(to).replace(' ', 'T')) < new Date()) continue;   // stillgelegt
-    list.push({ id: String(row[P.id]), code: row[P.code], name: row[P.name], city: row[P.city], lat, lon });
-  }
-  if (!list.length) throw new Error('keine Messstellen');
-  try { localStorage.setItem(LS_UBA, JSON.stringify({ ts: Date.now(), list })); } catch { }
-  return list;
-}
-const aqLevel = (comp, v) => { const lim = AQ_COMP[comp]?.lim; if (!lim || v == null) return null; let i = 0; while (i < 4 && v > lim[i]) i++; return i; };
-// Aktuellste Messung einer Station
-async function ubaLatest(st) {
-  const now = Date.now();
-  const q = `/airquality/json?station=${encodeURIComponent(st.id)}&date_from=${ymd(now - 24 * HOUR)}&time_from=1&date_to=${ymd(now)}&time_to=24&lang=de`;
-  const { data: d, at } = await ubaJSON(q);
-  const per = d.data?.[st.id] || Object.values(d.data || {})[0];
-  if (!per) return null;
-  const keys = Object.keys(per).sort();
-  for (let k = keys.length - 1; k >= 0; k--) {
-    const rec = per[keys[k]]; if (!Array.isArray(rec)) continue;
-    const comps = {};
-    for (const c of rec) if (Array.isArray(c) && c.length >= 2 && AQ_COMP[Number(c[0])]) {
-      const v = parseFloat(c[1]); if (isFinite(v)) comps[Number(c[0])] = v;
-    }
-    if (Object.keys(comps).length) return { time: rec[0] && /\d{4}-\d{2}-\d{2}/.test(rec[0]) ? rec[0] : keys[k], comps, at };
-  }
-  return null;
-}
-async function loadAir(lat, lon) {
-  const all = await ubaStations();
-  const near = all.map(s => ({ ...s, km: distKm(lat, lon, s.lat, s.lon) })).sort((a, b) => a.km - b.km).slice(0, 4);
-  if (!near.length || near[0].km > 80) { renderAir(null, 'Keine Messstelle des Umweltbundesamts in der Nähe (nur Deutschland).'); return; }
-  for (const st of near) {
-    try {
-      const m = await ubaLatest(st);
-      if (!m) continue;
-      const t = new Date(String(m.time).replace(' ', 'T'));
-      if (isFinite(t) && Date.now() - t > 12 * HOUR) continue;     // veraltet → nächste Station
-      renderAir({ st, ...m }); return;
-    } catch (e) { console.warn('UBA', st.name, e.message); }
-  }
-  renderAir(null, 'Die nächstgelegenen Messstellen liefern derzeit keine aktuellen Werte.');
-}
-function renderAir(r, msg) {
-  const body = $('#airBody'), badge = $('#airBadge');
-  if (!r) { body.className = 'small muted'; body.textContent = msg; badge.hidden = true; $('#airInfo').textContent = ''; return; }
-  const order = [1, 9, 5, 3].filter(c => r.comps[c] != null);
-  const levels = order.map(c => aqLevel(c, r.comps[c]));
-  const worst = Math.max(...levels);
-  badge.hidden = false; badge.textContent = AQ_TXT[worst]; badge.style.background = AQ_COL[worst];
-  body.className = '';
-  body.innerHTML = `<div class="airlist">` + order.map((c, i) => {
-    const lv = levels[i], bar = [0, 1, 2, 3, 4].map(k => `<i style="${k <= lv ? `background:${AQ_COL[lv]}` : ''}"></i>`).join('');
-    return `<div class="aname">${esc(AQ_COMP[c].name)}<small>${esc(AQ_COMP[c].avg)}</small></div>`
-      + `<div><div class="abar">${bar}</div><div class="alabel">${AQ_TXT[lv]}</div></div>`
-      + `<div class="aval">${fmt(r.comps[c], 0)} µg/m³</div>`;
-  }).join('') + `</div>`;
-  const t = String(r.time).match(/(\d{4})-(\d{2})-(\d{2})\s+(\d{2}):(\d{2})/);
-  const when = t ? `${t[3]}.${t[2]}. ${t[4]}:${t[5]} Uhr` : r.time;
-  $('#airInfo').textContent = `Messstelle ${r.st.name}${r.st.city && !String(r.st.name).includes(r.st.city) ? ` (${r.st.city})` : ''} · ${fmt(r.st.km, 0)} km · Messung ${when} · Gesamtbewertung nach dem schlechtesten Einzelwert (Luftqualitätsindex des UBA) · vorläufige Daten`;
-}
-
 // ---------- Pollen ----------
 let dwdPollen = null;
 const isGermany = () => !S.loc || (S.loc.lat > 47.2 && S.loc.lat < 55.1 && S.loc.lon > 5.8 && S.loc.lon < 15.1 && (!S.loc.sub || /deutschland|germany/i.test(S.loc.sub)));
 function autoPollenRegion(lat, lon) { let best = null, bd = Infinity; for (const r of POLLEN_REGIONS) { const d = distKm(lat, lon, r[2], r[3]); if (d < bd) { bd = d; best = r; } } return best; }
 const regionOf = (id) => POLLEN_REGIONS.find(r => r[0] === Number(id));
 async function getDwdPollen() {
-  if (dwdPollen && Date.now() - dwdPollen.ts < 60 * 60000) return dwdPollen;
+  if (dwdPollen && Date.now() - dwdPollen.ts < 60 * MIN) return dwdPollen;
   const { data, at } = await fetchJSON(DWD_POLLEN);
   dwdPollen = { ts: Date.now(), at, data }; return dwdPollen;
 }
@@ -831,7 +845,7 @@ async function loadPollen(lat, lon) {
   if (!sel.length) { renderPollen(null, [], 'Keine Pollenart gewählt – über „Pollenarten wählen“ festlegen.'); return; }
   if (isGermany()) {
     try {
-      const { data, at } = await getDwdPollen();
+      const { data } = await getDwdPollen();
       const reg = S.pollenRegion !== 'auto' && regionOf(S.pollenRegion) ? regionOf(S.pollenRegion) : autoPollenRegion(lat, lon);
       const entry = (data.content || []).find(c => (c.partregion_id > 0 ? c.partregion_id : c.region_id) === reg[0]);
       if (!entry) throw new Error('Gebiet nicht im DWD-Datensatz');
@@ -954,7 +968,7 @@ function renderFavList(editId = null) {
 function loadFav(f) { S.station = f.station || null; setLocation(f.lat, f.lon, { name: f.name, sub: f.sub }, true); }
 
 // ---------- Karte ----------
-let map = null, marker, stMarker, radarLayer, satLayer, activeBase = null;
+let map = null, marker, stMarker, satLayer, activeBase = null;
 const baseLayers = {};
 const hasLeaflet = () => typeof window.L !== 'undefined';
 function bkg(layer) {
@@ -1006,7 +1020,6 @@ function initMap() {
   map = L.map('map', { maxZoom: 14 }).setView([49.6, 11.0], 8);
   setBase(S.basemap, false);
   map.attributionControl.addAttribution('Radar: <a href="https://www.dwd.de/" target="_blank" rel="noopener">DWD</a>');
-  radarLayer = L.tileLayer.wms(DWD_WMS, { layers: DWD_RADAR, format: 'image/png', transparent: true, version: '1.3.0', tileSize: 512, opacity: 0.8, zIndex: 20 });
   satLayer = L.tileLayer.wms(SAT_WMS, { layers: satLayerName(), format: 'image/png', transparent: true, version: '1.3.0', tileSize: 512, opacity: 0.85, zIndex: 10, attribution: 'Satellit © <a href="https://www.eumetsat.int/" target="_blank" rel="noopener">EUMETSAT</a>' });
   let satErr = 0;
   satLayer.on('tileerror', () => { if (++satErr === 4) toast(`Satellitenebene „${satLayerName()}“ nicht abrufbar – in den Einstellungen andere Ebene wählen.`, 6000); });
@@ -1019,6 +1032,85 @@ function initMap() {
     div.appendChild(b); L.popup().setLatLng(e.latlng).setContent(div).openOn(map);
   });
 }
+
+// ---- Radar-Animation (DWD-WMS mit TIME-Parameter, 10-Minuten-Schritte, −1 h bis +2 h) ----
+const anim = { times: [], idx: 0, nowIdx: 0, layers: new Map(), timer: null, hold: 0 };
+let radarTimes = [];        // Zeitpunkte aus dem Bright-Sky-Radar (gleiches DWD-RV-Produkt)
+let capCache = null;
+const radarVisible = () => isOn('map') && (S.mapMode === 'radar' || S.mapMode === 'both');
+async function capTimes() {
+  if (capCache && Date.now() - capCache.ts < 5 * MIN) return capCache.times;
+  const r = await fetch(DWD_RADAR_CAPS); if (!r.ok) throw new Error();
+  const xml = await r.text();
+  const m = xml.match(/<Dimension[^>]*name="time"[^>]*>([^<]+)<\/Dimension>/i); if (!m) throw new Error();
+  const times = [];
+  for (const part of m[1].trim().split(',')) {
+    const iv = part.split('/');
+    if (iv.length === 3) {
+      const a = Date.parse(iv[0]), b = Date.parse(iv[1]), st = (iv[2].match(/PT(\d+)M/) || [0, 5])[1] * MIN;
+      for (let t = Math.max(a, Date.now() - 3 * HOUR); t <= b; t += st) times.push(t);
+    } else { const t = Date.parse(part); if (isFinite(t)) times.push(t); }
+  }
+  capCache = { ts: Date.now(), times }; return times;
+}
+async function updateAnimFrames() {
+  if (!map) return;
+  const now = Date.now();
+  let times = radarTimes.length ? radarTimes.slice() : null;
+  if (!times) { try { times = await capTimes(); } catch { times = null; } }
+  if (!times || !times.length) {   // Zeitpunkte schätzen: 5-Minuten-Raster, letztes Bild ca. 5 min alt
+    const base = Math.floor(now / (5 * MIN)) * 5 * MIN - 5 * MIN; times = [];
+    for (let k = -12; k <= 24; k++) times.push(base + k * 5 * MIN);
+  }
+  times = [...new Set(times)].filter(t => t >= now - 62 * MIN && t <= now + 125 * MIN).sort((a, b) => a - b);
+  if (!times.length) return;
+  let ni = 0; times.forEach((t, i) => { if (t <= now + MIN) ni = i; });
+  const sel = times.filter((t, i) => (((i - ni) % 2) + 2) % 2 === 0);
+  const keep = new Set(sel);
+  for (const [t, l] of anim.layers) if (!keep.has(t)) { map.removeLayer(l); anim.layers.delete(t); }
+  const curT = anim.times[anim.idx];
+  anim.times = sel; anim.nowIdx = sel.indexOf(times[ni]);
+  $('#animSlider').max = String(sel.length - 1);
+  showFrame(anim.timer && sel.includes(curT) ? sel.indexOf(curT) : anim.nowIdx);
+}
+function animLayer(t) {
+  if (!anim.layers.has(t)) {
+    const l = L.tileLayer.wms(DWD_WMS, { layers: DWD_RADAR, format: 'image/png', transparent: true, version: '1.3.0', tileSize: 512, opacity: 0, zIndex: 20, time: isoZ(t) });
+    anim.layers.set(t, l);
+    if (radarVisible()) l.addTo(map);
+  }
+  return anim.layers.get(t);
+}
+function showFrame(i) {
+  if (!map || !anim.times.length) return;
+  anim.idx = Math.max(0, Math.min(anim.times.length - 1, i));
+  const t = anim.times[anim.idx];
+  if (radarVisible()) {
+    const cur = animLayer(t);
+    for (let k = 1; k <= 2; k++) if (anim.times[anim.idx + k]) animLayer(anim.times[anim.idx + k]);   // vorladen
+    for (const l of anim.layers.values()) l.setOpacity(l === cur ? 0.8 : 0);
+  }
+  $('#animSlider').value = String(anim.idx);
+  const diff = Math.round((t - anim.times[anim.nowIdx]) / MIN), el = $('#animTime');
+  el.textContent = diff > 0 ? `${hhmm(t)} · Prognose +${diff} min` : diff < 0 ? `${hhmm(t)} · vor ${-diff} min` : `${hhmm(t)} · aktuell`;
+  el.classList.toggle('fc', diff > 0);
+}
+function playAnim() {
+  if (anim.timer) { stopAnim(); return; }
+  if (!anim.times.length) return;
+  if (anim.idx >= anim.times.length - 1) showFrame(0);
+  $('#btnPlay').innerHTML = I('pause'); $('#btnPlay').title = 'Animation anhalten';
+  anim.timer = setInterval(() => {
+    if (anim.hold > 0) { anim.hold--; return; }
+    if (anim.idx >= anim.times.length - 1) { anim.hold = 2; showFrame(0); return; }
+    showFrame(anim.idx + 1);
+    if (anim.idx === anim.times.length - 1) anim.hold = 2;
+  }, 650);
+}
+function stopAnim() {
+  clearInterval(anim.timer); anim.timer = null; anim.hold = 0;
+  $('#btnPlay').innerHTML = I('play'); $('#btnPlay').title = 'Animation abspielen';
+}
 function windyUrl() {
   const p = S.loc || { lat: 49.6, lon: 11 };
   const q = new URLSearchParams({ lat: p.lat.toFixed(3), lon: p.lon.toFixed(3), detailLat: p.lat.toFixed(3), detailLon: p.lon.toFixed(3), zoom: '7', level: 'surface', overlay: 'wind', product: 'ecmwf', menu: '', message: 'true', marker: 'true', calendar: 'now', pressure: 'true', type: 'map', location: 'coordinates', detail: '', metricWind: 'km/h', metricTemp: '°C', radarRange: '-1' });
@@ -1028,34 +1120,30 @@ function setMapMode(mode, persist = true) {
   S.mapMode = mode; if (persist) save();
   const tabs = { radar: '#tabRadar', sat: '#tabSat', both: '#tabBoth', wind: '#tabWind' };
   Object.entries(tabs).forEach(([k, sel]) => $(sel).classList.toggle('active', k === mode));
-  const wind = mode === 'wind';
-  $('#map').hidden = wind; $('#windy').hidden = !wind;
-  $('#radarLegend').style.display = (mode === 'radar' || mode === 'both') ? '' : 'none';
+  const wind = mode === 'wind', radar = mode === 'radar' || mode === 'both';
+  $('#map').hidden = wind; $('#windy').hidden = !wind; $('#animBar').hidden = !radar;
+  $('#radarLegend').style.display = radar ? '' : 'none';
   $('#mapTitle').textContent = { radar: 'Regenradar', sat: 'Satellitenbild', both: 'Radar & Satellit', wind: 'Windströmung' }[mode];
+  if (!radar) stopAnim();
   if (wind) {
     const box = $('#windy'), url = windyUrl();
     if (!box.firstChild || box.dataset.src !== url) { box.innerHTML = `<iframe src="${url}" title="Windkarte von Windy.com" loading="lazy" allowfullscreen></iframe>`; box.dataset.src = url; }
   } else if (map) {
-    if (mode !== 'sat') radarLayer.addTo(map); else map.removeLayer(radarLayer);
+    for (const l of anim.layers.values()) { if (radar) l.addTo(map); else map.removeLayer(l); }
+    if (radar) showFrame(anim.idx);
     if (mode !== 'radar') { satLayer.setParams({ layers: satLayerName() }, true); satLayer.addTo(map); } else map.removeLayer(satLayer);
     setTimeout(() => map.invalidateSize(), 50);
   }
   updateMapTime();
 }
-let radarTime = null;
 function updateMapTime() {
   const m = S.mapMode, parts = [];
   if (m === 'wind') parts.push('Windy.com · ECMWF-Modell');
-  if (m === 'radar' || m === 'both') parts.push(`Radar ${radarTime ? hhmm(radarTime) : 'aktuell'}`);
+  if (m === 'radar' || m === 'both') parts.push('DWD-Radar, 10-Minuten-Schritte');
   if (m === 'sat' || m === 'both') parts.push(`Satellit ${isDayLayer() ? 'Echtfarben' : 'Infrarot'} (ca. 10–20 min Verzug)`);
   $('#mapTime').textContent = parts.join(' · ');
 }
-function refreshMapLayers() {
-  if (!map) return;
-  const bust = { _t: Math.floor(Date.now() / 300000) };
-  radarLayer.setParams(bust);
-  satLayer.setParams({ ...bust, layers: satLayerName() });
-}
+function refreshSat() { if (map && satLayer) satLayer.setParams({ _t: Math.floor(Date.now() / (5 * MIN)), layers: satLayerName() }); }
 function drawMarker() {
   if (!S.loc || !map) return;
   const ll = [S.loc.lat, S.loc.lon];
@@ -1068,7 +1156,7 @@ function drawStationMarker() {
   if (S.station?.lat != null) stMarker = L.circleMarker([S.station.lat, S.station.lon], { radius: 6, color: '#0b5cab', weight: 2, fillColor: '#fff', fillOpacity: 1 }).bindTooltip(`Station ${S.station.name}`).addTo(map);
 }
 
-// ---------- Regen-Hinweis ----------
+// ---------- Regen in 2 Stunden (Bright Sky /radar) ----------
 const RAIN_RAW = 5, NEAR_KM = 25, LOC_KM = 1.5;
 async function inflate(b64) {
   const bin = Uint8Array.from(atob(b64), c => c.charCodeAt(0));
@@ -1079,7 +1167,7 @@ function u16(bytes, le) { const dv = new DataView(bytes.buffer, bytes.byteOffset
 const bad = (a) => { let n = 0; for (let i = 0; i < a.length; i++) if (a[i] > 2500 && a[i] < 65000) n++; return n; };
 async function loadRadar(lat, lon) {
   const now = Date.now();
-  const q = new URLSearchParams({ lat: lat.toFixed(4), lon: lon.toFixed(4), distance: String((NEAR_KM + 2) * 1000), date: new Date(now - 15 * 60000).toISOString(), last_date: new Date(now + 125 * 60000).toISOString(), format: 'DecompressionStream' in window ? 'compressed' : 'plain' });
+  const q = new URLSearchParams({ lat: lat.toFixed(4), lon: lon.toFixed(4), distance: String((NEAR_KM + 2) * 1000), date: new Date(now - 65 * MIN).toISOString(), last_date: new Date(now + 125 * MIN).toISOString(), format: 'DecompressionStream' in window ? 'compressed' : 'plain' });
   const d = await getJSON(`${BS}/radar?${q}`);
   const recs = (d.radar || []).sort((a, b) => new Date(a.timestamp) - new Date(b.timestamp));
   if (!recs.length) throw new Error('keine Radardaten');
@@ -1095,39 +1183,62 @@ async function loadRadar(lat, lon) {
   if (d.latlon_position && typeof d.latlon_position.x === 'number') { px = d.latlon_position.x; py = d.latlon_position.y; if (d.bbox && (px >= w || py >= h)) { px -= d.bbox[1]; py -= d.bbox[0]; } }
   const rot = lon - 10;
   const st = frames.map(f => {
-    let loc = 0, minD = Infinity, minB = null;
+    let loc = 0, locSum = 0, locN = 0, minD = Infinity, minB = null;
     for (let yy = Math.max(0, Math.floor(py - NEAR_KM)); yy <= Math.min(h - 1, Math.ceil(py + NEAR_KM)); yy++)
       for (let xx = Math.max(0, Math.floor(px - NEAR_KM)); xx <= Math.min(w - 1, Math.ceil(px + NEAR_KM)); xx++) {
         const dx = xx - px, dy = py - yy, dist = Math.hypot(dx, dy); if (dist > NEAR_KM) continue;
         const v = f.data[yy * w + xx]; if (v >= 2500) continue;
-        if (dist <= LOC_KM && v > loc) loc = v;
+        if (dist <= LOC_KM) { if (v > loc) loc = v; locSum += v; locN++; }
         if (v >= RAIN_RAW && dist < minD) { minD = dist; minB = (deg(Math.atan2(dx, dy)) + rot + 360) % 360; }
       }
-    return { t: f.t, loc, minD: isFinite(minD) ? minD : null, minB };
+    return { t: f.t, loc, mean: locN ? locSum / locN : 0, minD: isFinite(minD) ? minD : null, minB };
   });
-  let ni = 0; st.forEach((s, i) => { if (s.t <= now + 60000) ni = i; });
+  radarTimes = st.map(s => s.t);
+  let ni = 0; st.forEach((s, i) => { if (s.t <= now + MIN) ni = i; });
   const cur = st[ni]; let eta = null, until = null;
-  if (cur.loc < RAIN_RAW) { for (let i = ni + 1; i < st.length; i++) if (st[i].loc >= RAIN_RAW) { eta = Math.max(0, Math.round((st[i].t - now) / 60000)); break; } }
-  else { for (let i = ni + 1; i < st.length; i++) if (st[i].loc < RAIN_RAW) { until = Math.round((st[i].t - now) / 60000); break; } }
-  return { t: cur.t, atLoc: cur.loc >= RAIN_RAW, mmh: cur.loc * 0.12, eta, until, minD: cur.minD, minB: cur.minB };
+  if (cur.loc < RAIN_RAW) { for (let i = ni + 1; i < st.length; i++) if (st[i].loc >= RAIN_RAW) { eta = Math.max(0, Math.round((st[i].t - now) / MIN)); break; } }
+  else { for (let i = ni + 1; i < st.length; i++) if (st[i].loc < RAIN_RAW) { until = Math.round((st[i].t - now) / MIN); break; } }
+  return { st, ni, t: cur.t, atLoc: cur.loc >= RAIN_RAW, mmh: cur.loc * 0.12, eta, until, minD: cur.minD, minB: cur.minB };
 }
-function renderRainHint(r) {
+const rainCol = (mmh) => mmh < 0.5 ? '#9fd3ff' : mmh < 2 ? '#2f7fff' : mmh < 10 ? '#f5c400' : '#e0282e';
+let lastNowcast;
+function renderNowcast(r) {
+  lastNowcast = r;
   const el = $('#rainHint');
-  radarTime = r?.t || null; updateMapTime();
-  if (!r) { el.className = 'rainhint small'; el.innerHTML = ''; return; }
+  if (!r) { el.className = 'rainhint small'; el.innerHTML = ''; $('#ncChart').innerHTML = ''; $('#ncInfo').textContent = 'Radardaten derzeit nicht abrufbar.'; return; }
   let cls, txt;
   if (r.atLoc) { cls = 'danger'; txt = `Es regnet am Standort (ca. ${fmt(r.mmh)} mm/h)` + (r.until != null ? ` – laut Radarvorhersage vorbei in ~${r.until} min` : ' – hält laut Radarvorhersage über 2 h an'); }
   else if (r.eta != null) {
-    cls = 'danger'; txt = `Regen erreicht den Standort in ca. ${r.eta} min (gegen ${hhmm(Date.now() + r.eta * 60000)})`;
-    rainNotify(`Regen in ca. ${r.eta} min`, `Laut DWD-Radarvorhersage gegen ${hhmm(Date.now() + r.eta * 60000)}.`);
+    cls = 'danger'; txt = `Regen erreicht den Standort in ca. ${r.eta} min (gegen ${hhmm(Date.now() + r.eta * MIN)})`;
+    rainNotify(`Regen in ca. ${r.eta} min`, `Laut DWD-Radarvorhersage gegen ${hhmm(Date.now() + r.eta * MIN)}.`);
   } else if (r.minD != null) { cls = 'warn'; txt = `Regen ${fmt(r.minD, 0)} km ${dirName(r.minB)} – laut Radarvorhersage nicht am Standort in den nächsten 2 h`; }
   else { cls = 'ok'; txt = `Kein Regen im Umkreis von ${NEAR_KM} km – auch in den nächsten 2 h nicht erwartet`; }
   el.className = `rainhint small ${cls}`;
   el.innerHTML = `${I(cls === 'ok' ? 'check' : 'rainIco')}<span>${esc(txt)}</span>`;
+
+  // 5-Minuten-Diagramm
+  const t0 = r.st[r.ni].t, fr = r.st.slice(r.ni).filter(s => s.t <= t0 + 120 * MIN);
+  const W = Math.max(300, Math.round($('#ncChart').clientWidth || 600)), PADL = 30, PADR = 6, TOP = 10, BH = 64, HGT = TOP + BH + 18;
+  const bw = (W - PADL - PADR) / Math.max(fr.length, 1);
+  const yv = (v) => Math.sqrt(Math.min(v, 10) / 10) * BH;
+  let svg = '';
+  for (const [v, l] of [[0.5, '0,5'], [2, '2'], [10, '10']]) svg += `<line class="grid" x1="${PADL}" x2="${W - PADR}" y1="${TOP + BH - yv(v)}" y2="${TOP + BH - yv(v)}"/><text class="lbl" x="${PADL - 4}" y="${TOP + BH - yv(v) + 3}" style="text-anchor:end">${l}</text>`;
+  svg += `<text class="lbl" x="${PADL + 3}" y="${TOP + 9}" style="text-anchor:start">mm/h</text>`;
+  svg += `<line class="grid" x1="${PADL}" x2="${W - PADR}" y1="${TOP + BH}" y2="${TOP + BH}" style="stroke:var(--line2)"/>`;
+  let total = 0;
+  fr.forEach((s, i) => {
+    const v = s.mean * 0.12; total += v * 5 / 60;
+    const x = PADL + i * bw;
+    if (v >= 0.1) { const hh = Math.max(2, yv(v)); svg += `<rect x="${(x + 0.6).toFixed(1)}" y="${(TOP + BH - hh).toFixed(1)}" width="${Math.max(1, bw - 1.2).toFixed(1)}" height="${hh.toFixed(1)}" rx="1.5" fill="${rainCol(v)}"><title>${hhmm(s.t)} Uhr: ${fmt(v)} mm/h</title></rect>`; }
+    const mins = Math.round((s.t - t0) / MIN);
+    if (mins % 30 === 0 && (i === 0 || x + bw / 2 < W - PADR - 16)) svg += `<text class="lbl" x="${x + (i === 0 ? 0 : bw / 2)}" y="${TOP + BH + 13}" style="text-anchor:${i === 0 ? 'start' : 'middle'}">${i === 0 ? 'jetzt' : hhmm(s.t)}</text>`;
+  });
+  $('#ncChart').innerHTML = `<svg viewBox="0 0 ${W} ${HGT}" width="${W}" height="${HGT}" role="img" aria-label="Niederschlag in 5-Minuten-Schritten">${svg}</svg>`;
+  $('#ncInfo').textContent = (total >= 0.05 ? `Summe in 2 h ca. ${fmt(total)} mm` : 'Kein nennenswerter Niederschlag am Standort erwartet') + ` · DWD-Radar mit Vorhersage, Bild ${hhmm(r.t)} Uhr`;
 }
 async function rainNotify(title, body) {
   const last = Number(localStorage.getItem(LS_RAIN) || 0);
-  if (Date.now() - last < 60 * 60000) return;
+  if (Date.now() - last < 60 * MIN) return;
   if (await notify(title, body, 'rain', 'rain')) localStorage.setItem(LS_RAIN, String(Date.now()));
 }
 async function notify(title, body, tag, kind) {
@@ -1175,7 +1286,7 @@ function locate() {
     const fav = S.favs.find(f => sameLoc(f, { lat, lon }));
     if (fav) loadFav(fav); else { S.station = null; setLocation(lat, lon, await reverseGeocode(lat, lon)); }
   }, () => { if (S.loc) toast(`Standort nicht ermittelbar – verwende „${S.loc.name}“.`); else { toast('Standort nicht ermittelbar – bitte Ort suchen.'); openSearch(); } },
-  { timeout: 15000, maximumAge: 5 * 60000 });
+  { timeout: 15000, maximumAge: 5 * MIN });
 }
 function setLocation(lat, lon, info, keepStation = false) {
   if (!keepStation) {
@@ -1184,6 +1295,7 @@ function setLocation(lat, lon, info, keepStation = false) {
     else if (S.station?.lat != null && distKm(lat, lon, S.station.lat, S.station.lon) > 60) { S.station = null; }
   }
   S.loc = { lat, lon, name: info?.name || `${fmt(lat, 3)}, ${fmt(lon, 3)}`, sub: info?.sub || '' }; save();
+  mosmixCache = null; radarTimes = [];
   renderLoc(); drawMarker(); drawStationMarker(); if (map) map.setView([lat, lon], 9);
   if (S.mapMode === 'wind') setMapMode('wind', false);
   refresh();
@@ -1204,10 +1316,12 @@ async function refresh() {
   const jobs = [];
   if (isOn('warnings')) jobs.push(loadWarnings(lat, lon).catch(() => { $('#warnings').innerHTML = ''; }));
   if (isOn('now')) { renderSun(); jobs.push(loadCurrent(lat, lon).catch(e => { $('#nowStation').textContent = `Aktuelle Werte nicht abrufbar (${e.message})`; })); }
-  if (isOn('daytext')) jobs.push(loadDayText(lat, lon).catch(e => { $('#dayText').textContent = `Textprognose nicht abrufbar (${e.message}).`; }));
+  const radarJob = isOn('nowcast') ? loadRadar(lat, lon).then(renderNowcast).catch(() => renderNowcast(null)) : Promise.resolve();
+  jobs.push(radarJob);
+  if (isOn('daytext')) jobs.push(loadDayText(lat, lon).catch(e => { $('#dayText').textContent = `Textprognose nicht abrufbar (${e.message}).`; renderWinter([]); }));
   if (isOn('chart')) jobs.push(loadForecast(lat, lon).catch(showForecastError));
-  if (isOn('map')) { refreshMapLayers(); jobs.push(loadRadar(lat, lon).then(renderRainHint).catch(() => renderRainHint(null))); }
-  if (isOn('air')) jobs.push(loadAir(lat, lon).catch(e => renderAir(null, `Luftdaten nicht abrufbar (${e.message}).`)));
+  if (isOn('days')) jobs.push(loadDays(lat, lon).catch(e => { $('#daysList').className = 'days small muted'; $('#daysList').textContent = `Tagesübersicht nicht abrufbar (${e.message}).`; $('#daysInfo').textContent = ''; }));
+  if (isOn('map')) { refreshSat(); jobs.push(radarJob.then(updateAnimFrames)); }
   if (isOn('pollen')) jobs.push(loadPollen(lat, lon).catch(e => renderPollen(null, [], `Pollenvorhersage nicht abrufbar (${e.message}).`)));
   await Promise.allSettled(jobs);
   $('#offline').hidden = !(offlineHits > 0 || !navigator.onLine);
@@ -1215,8 +1329,8 @@ async function refresh() {
   if (again) { again = false; refresh(); }
 }
 let timer;
-const schedule = () => { clearInterval(timer); timer = setInterval(refresh, S.intervalMin * 60000); };
-document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'visible') refresh(); });
+const schedule = () => { clearInterval(timer); timer = setInterval(refresh, S.intervalMin * MIN); };
+document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'visible') refresh(); else stopAnim(); });
 window.addEventListener('online', () => refresh());
 window.addEventListener('offline', () => { $('#offline').hidden = false; });
 
@@ -1241,23 +1355,6 @@ function initSettings() {
   bind('#setNotify', 'notify'); bind('#setWarnNotify', 'warnNotify'); bind('#setAuto', 'autoLocate');
   $('#btnLayout').innerHTML = `${I('layout')} Abschnitte auswählen und sortieren`;
   $('#btnLayout').onclick = () => { $('#dlgSettings').close(); openLayout(false); };
-  const box = $('#keyFields');
-  box.innerHTML = Object.entries(KEY_PROVIDERS).map(([id, p]) => `
-    <div class="keyrow">
-      <div class="k-head"><b>${esc(p.name)}</b><a class="small" href="${p.url}" target="_blank" rel="noopener">Key holen</a></div>
-      <div class="small muted">${esc(p.free)}</div>
-      <input type="password" data-prov="${id}" placeholder="API-Key einfügen" autocomplete="off" spellcheck="false">
-    </div>`).join('');
-  box.querySelectorAll('input[data-prov]').forEach(inp => {
-    inp.value = S.keys[inp.dataset.prov] || '';
-    inp.onfocus = () => { inp.type = 'text'; }; inp.onblur = () => { inp.type = 'password'; };
-    inp.onchange = () => {
-      S.keys[inp.dataset.prov] = inp.value.trim(); save();
-      for (const k of Object.keys(localStorage)) if (k.startsWith(LS_CACHE)) localStorage.removeItem(k);
-      initForecastControls.refill();
-      if (currentModel().prov === inp.dataset.prov) reloadForecast();
-    };
-  });
   $('#btnTestNotify').onclick = async () => {
     if ('Notification' in window && Notification.permission === 'default') await Notification.requestPermission();
     if (!(await notify('Test: Regen in ca. 20 min', 'So sieht ein Regenhinweis aus.', 'test', 'test'))) toast('Benachrichtigungen sind nicht erlaubt.');
@@ -1289,15 +1386,14 @@ function initPwa() {
             toast('Neue App-Version verfügbar.', 15000, { label: 'Neu laden', fn: () => location.reload() });
         });
       });
-      setInterval(() => reg.update().catch(() => {}), 60 * 60000);
+      setInterval(() => reg.update().catch(() => {}), 60 * MIN);
     }).catch(() => {});
   }
 }
 
 // ---------- Start ----------
 function init() {
-  // Update von einer Version ohne Assistent: bekannte Abschnitte als „gesehen“ markieren, damit neue als „neu“ erscheinen
-  if (isUpgrade && !S.layoutSeen.length) S.layoutSeen = SECTIONS.map(x => x.id).filter(id => id !== 'air');
+  if (isUpgrade && !S.layoutSeen.length) S.layoutSeen = SECTIONS.map(x => x.id).filter(id => !NEW_IN_VERSION.includes(id));
   S.layout = normLayout(); save(); applyLayout();
   $('#bkgYear').textContent = `(${YEAR})`;
   $('#appVersion').textContent = `Version ${APP_VERSION}`;
@@ -1305,7 +1401,8 @@ function init() {
   $('#btnSettings').innerHTML = I('gear'); $('#btnInstall').innerHTML = I('install'); $('#locChevron').innerHTML = I('chevron');
   $('#stationIco').innerHTML = I('station'); $('#stationChevron').innerHTML = I('chevron');
   $('#btnPlacesGps').innerHTML = `${I('gps')} Mein Standort`; $('#btnPlacesSearch').innerHTML = `${I('search')} Ort suchen`;
-  $('#nowIcon').innerHTML = window.ICONS.weather('unknown'); $('#airIco').innerHTML = I('air');
+  $('#nowIcon').innerHTML = window.ICONS.weather('unknown'); $('#ncIco').innerHTML = I('bars'); $('#daysIco').innerHTML = I('calendar');
+  $('#btnPlay').innerHTML = I('play');
   initForecastControls(); initSettings(); initPollenDialog(); initMap(); setMapMode(S.mapMode, false); renderLoc(); initPwa();
   $('#btnFav').onclick = toggleFav; $('#btnPlaces').onclick = openPlaces;
   $('#btnPlacesGps').onclick = () => { $('#dlgPlaces').close(); locate(); };
@@ -1318,17 +1415,19 @@ function init() {
   $('#searchForm').onsubmit = (e) => { e.preventDefault(); doSearch(); };
   $('#tabRadar').onclick = () => setMapMode('radar'); $('#tabSat').onclick = () => setMapMode('sat');
   $('#tabBoth').onclick = () => setMapMode('both'); $('#tabWind').onclick = () => setMapMode('wind');
+  $('#btnPlay').onclick = playAnim;
+  $('#btnAnimNow').onclick = () => { stopAnim(); showFrame(anim.nowIdx); };
+  $('#animSlider').oninput = (e) => { stopAnim(); showFrame(Number(e.target.value)); };
   $('#btnLayoutDone').onclick = closeLayout;
   $('#dlgLayout').addEventListener('cancel', (e) => { e.preventDefault(); closeLayout(); });
   $('#btnLayoutReset').onclick = () => { layoutDraft = SECTIONS.map(s => ({ id: s.id, on: true })); renderLayoutList(); commitLayout(); };
   discoverSatLayers().then(() => { if (S.mapMode === 'sat' || S.mapMode === 'both') setMapMode(S.mapMode, false); });
   if (S.loc) { drawMarker(); renderSun(); if (map) map.setView([S.loc.lat, S.loc.lon], 9); refresh(); }
   const startLocate = () => { if (S.autoLocate || !S.loc) locate(); };
-  // Assistent zuerst – Standortabfrage bzw. Ortssuche erst danach, damit sich keine Dialoge überlagern
   if (S.wizardFor !== WIZARD_VERSION) { afterLayout = startLocate; openLayout(true); } else startLocate();
   schedule();
-  setInterval(() => { if (isOn('now')) renderSun(); }, 10 * 60000);
+  setInterval(() => { if (isOn('now')) renderSun(); }, 10 * MIN);
 }
 let rsT;
-window.addEventListener('resize', () => { clearTimeout(rsT); rsT = setTimeout(() => { if (lastChart) drawChart(...lastChart); }, 150); });
+window.addEventListener('resize', () => { clearTimeout(rsT); rsT = setTimeout(() => { if (lastChart) drawChart(...lastChart); if (lastNowcast) renderNowcast(lastNowcast); }, 150); });
 document.addEventListener('DOMContentLoaded', init);
