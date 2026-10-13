@@ -1,16 +1,16 @@
 /* Service Worker – Wetter-App
  * App-Dateien + Leaflet (unpkg): zuerst Netz, sonst Cache (offline lauffähig)
- * Wetter-/Pollendaten (Bright Sky, Open-Meteo, DWD-Pollen): zuerst Netz, offline letzte Antwort
+ * Wetter-, Pollen- und Luftdaten: zuerst Netz, offline letzte Antwort
  *   x-sw-time  = Zeitpunkt des ursprünglichen Abrufs, x-sw-cache = Antwort aus dem Offline-Speicher
  * Karten, Radar, Satellit, Windy, Anbieter mit API-Key: nur Netz
  */
-const VERSION = 'wetter-v3.2.0';
+const VERSION = 'wetter-v3.3.0';
 const SHELL = ['./', './index.html', './style.css', './app.js', './icons.js', './manifest.webmanifest',
   'https://unpkg.com/leaflet@1.9.4/dist/leaflet.js', 'https://unpkg.com/leaflet@1.9.4/dist/leaflet.css',
   'https://unpkg.com/leaflet@1.9.4/dist/images/marker-icon.png', 'https://unpkg.com/leaflet@1.9.4/dist/images/marker-icon-2x.png',
   'https://unpkg.com/leaflet@1.9.4/dist/images/marker-shadow.png', 'https://unpkg.com/leaflet@1.9.4/dist/images/layers.png',
   './icons/icon-192.png', './icons/icon-512.png', './icons/icon-maskable-512.png', './icons/apple-touch-icon.png', './icons/badge-96.png'];
-const DATA_HOSTS = ['api.brightsky.dev', 'api.open-meteo.com', 'geocoding-api.open-meteo.com', 'air-quality-api.open-meteo.com', 'opendata.dwd.de'];
+const DATA_HOSTS = ['api.brightsky.dev', 'api.open-meteo.com', 'geocoding-api.open-meteo.com', 'air-quality-api.open-meteo.com', 'opendata.dwd.de', 'www.umweltbundesamt.de'];
 
 self.addEventListener('install', e => {
   e.waitUntil(caches.open(VERSION).then(c => Promise.allSettled(SHELL.map(u => c.add(new Request(u, { mode: u.startsWith('http') ? 'cors' : 'same-origin' }))))));

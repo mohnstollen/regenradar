@@ -1,13 +1,13 @@
-# Wetter-App (PWA) – Version 3.2.0
+# Wetter-App (PWA) – Version 3.3.0
 
-## Neu in 3.2
-- DWD-Warnungen ganz oben, nur sichtbar, wenn es Warnungen gibt
-- Favoriten: Stern speichert den Ort (inkl. gewählter Station); Ortsname antippen → Liste zum Laden, Umbenennen, Sortieren, Löschen
-- Pollenflug (DWD-Gefahrenindex, 8 Arten, 3 Tage, Skala 0–3 in halben Stufen); Pollenarten und Gebiet wählbar
-  Außerhalb Deutschlands bzw. wenn der DWD nicht erreichbar ist: Open-Meteo/CAMS (6 Arten, Stufen abgeleitet)
+## Neu in 3.3
+- Startseiten-Assistent (beim ersten Start und nach diesem Update): Abschnitte an-/abwählen und per Ziehen oder Pfeilen sortieren;
+  später unter Einstellungen → Startseite änderbar. Abgewählte Abschnitte laden keine Daten.
+- Textprognose und Diagramm zeigen nur noch den Modelllauf (ohne bekannten Lauf: Datenstand)
+- Luftqualität der nächstgelegenen aktiven Messstelle (Umweltbundesamt, Air Data API v3, Rückfall v2):
+  PM10, PM2,5, NO2, O3 mit Einstufung nach dem Luftqualitätsindex des UBA
+- Quellen & Lizenzen am Seitenende standardmäßig eingeklappt
 
 ## Installation
 Ordnerinhalt ins GitHub-Repo laden, GitHub Pages aktivieren, Seite auf dem Handy öffnen → „App installieren“.
 Lokal testen: `python -m http.server 8000` → http://localhost:8000
-
-Leaflet wird von unpkg.com geladen und vom Service Worker für den Offline-Betrieb gespeichert.

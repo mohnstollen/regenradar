@@ -39,7 +39,6 @@
   const sunHalf = '<path d="M5.5 17a6.5 6.5 0 0 1 13 0z" fill="#f5b301" stroke="#e0a000" stroke-width="1"/><path d="M2 20.5h20"/>';
   const starPath = 'M12 2.8l2.8 5.8 6.4.9-4.6 4.5 1.1 6.3L12 17.3l-5.7 3 1.1-6.3-4.6-4.5 6.4-.9z';
   const UI = {
-    pin: ui('<path d="M12 21s-7-6.2-7-11.5A7 7 0 0 1 19 9.5C19 14.8 12 21 12 21z"/><circle cx="12" cy="9.5" r="2.5"/>'),
     gps: ui('<circle cx="12" cy="12" r="7"/><circle cx="12" cy="12" r="2.5" fill="currentColor"/><path d="M12 2v3M12 19v3M2 12h3M19 12h3"/>'),
     search: ui('<circle cx="11" cy="11" r="7"/><path d="M20 20l-4-4"/>'),
     refresh: ui('<path d="M20 11a8 8 0 1 0-2.3 6.3"/><path d="M20 4v7h-7"/>'),
@@ -50,7 +49,10 @@
     edit: ui('<path d="M4 20h4L19 9l-4-4L4 16z"/><path d="M14 6l4 4"/>'),
     trash: ui('<path d="M4 7h16"/><path d="M9 7V4h6v3"/><path d="M6 7l1 13h10l1-13"/>'),
     up: ui('<path d="M6 15l6-6 6 6"/>'),
+    down: ui('<path d="M6 9l6 6 6-6"/>'),
+    grip: ui('<circle cx="9" cy="6" r="1.2" fill="currentColor"/><circle cx="15" cy="6" r="1.2" fill="currentColor"/><circle cx="9" cy="12" r="1.2" fill="currentColor"/><circle cx="15" cy="12" r="1.2" fill="currentColor"/><circle cx="9" cy="18" r="1.2" fill="currentColor"/><circle cx="15" cy="18" r="1.2" fill="currentColor"/>'),
     ok: ui('<path d="M5 12l5 5 9-10"/>'),
+    layout: ui('<rect x="3" y="3" width="18" height="5" rx="1.5"/><rect x="3" y="10" width="18" height="5" rx="1.5"/><rect x="3" y="17" width="18" height="4" rx="1.5"/>'),
     wind: ui('<path d="M3 8h11a3 3 0 1 0-3-3"/><path d="M3 12h16a3 3 0 1 1-3 3"/><path d="M3 16h7"/>'),
     drop: ui('<path d="M12 3s6 6.5 6 11a6 6 0 0 1-12 0c0-4.5 6-11 6-11z"/>'),
     umbrella: ui('<path d="M3 12a9 9 0 0 1 18 0z"/><path d="M12 12v7a2 2 0 0 1-4 0"/>'),
@@ -66,7 +68,12 @@
     sunset: ui(sunHalf + '<path d="M12 2.5v6"/><path d="M9.3 5.8L12 8.5l2.7-2.7"/>'),
     daylen: ui('<circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/>'),
     clock: ui('<circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/>'),
-    flower: ui('<circle cx="12" cy="9" r="2.2"/><path d="M12 6.8a2.6 2.6 0 1 1 2.2-3.9M14.2 9a2.6 2.6 0 1 1 1.4 4.3M12 11.2a2.6 2.6 0 1 1-2.6 3.3M9.8 9a2.6 2.6 0 1 1-1.4-4.3"/><path d="M12 13v8"/><path d="M12 18c-2 0-3.5-1-4-3"/>')
+    flower: ui('<circle cx="12" cy="9" r="2.2"/><path d="M12 6.8a2.6 2.6 0 1 1 2.2-3.9M14.2 9a2.6 2.6 0 1 1 1.4 4.3M12 11.2a2.6 2.6 0 1 1-2.6 3.3M9.8 9a2.6 2.6 0 1 1-1.4-4.3"/><path d="M12 13v8"/><path d="M12 18c-2 0-3.5-1-4-3"/>'),
+    air: ui('<path d="M3 9h10a3 3 0 1 0-3-3"/><path d="M3 15h14a3 3 0 1 1-3 3"/><circle cx="19" cy="9" r="1" fill="currentColor"/><circle cx="7" cy="19" r="1" fill="currentColor"/><circle cx="20" cy="13" r=".8" fill="currentColor"/>'),
+    map: ui('<path d="M9 4L3 6v14l6-2 6 2 6-2V4l-6 2z"/><path d="M9 4v14M15 6v14"/>'),
+    chart: ui('<path d="M3 20h18"/><path d="M4 16l5-6 4 3 6-8"/>'),
+    text: ui('<path d="M4 6h16M4 11h16M4 16h10"/>'),
+    info: ui('<circle cx="12" cy="12" r="9"/><path d="M12 11v6"/><path d="M12 7.5h.01"/>')
   };
 
   window.ICONS = { weather: (k) => WEATHER[k] || WEATHER.unknown, ui: (k) => UI[k] || '' };

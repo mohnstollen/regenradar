@@ -1,21 +1,24 @@
-/* Wetter-App (PWA) – Version 3.2
- * Warnungen:  Bright Sky /alerts – ganz oben, nur sichtbar, wenn es Warnungen gibt
- * Aktuell:    Bright Sky /current_weather – nächste oder gewählte DWD-Station (/sources)
- * Sonne:      Sonnenauf-/-untergang lokal berechnet
- * Text:       Tagesprognose in Worten aus DWD ICON-D2 (Open-Meteo)
- * Verlauf:    12 h … 10 Tage; Temperatur, Niederschlag, Wind, Sonnenschein; Modell wählbar
- * Karte:      DWD-Radar (WMS), EUMETSAT-Satellit (WMS, MTG), Windy-Einbettung
- * Pollen:     DWD Pollenflug-Gefahrenindex (s31fg.json), außerhalb DE: Open-Meteo Air Quality (CAMS)
- * Favoriten:  beliebig viele Orte inkl. gewählter Station, umbenennen, sortieren, löschen
+/* Wetter-App (PWA) – Version 3.3
+ * Startseite:  Abschnitte ein-/ausblenden und sortieren (Assistent beim Erststart bzw. nach Update, Einstellungen)
+ * Warnungen:   Bright Sky /alerts – nur sichtbar, wenn es Warnungen gibt
+ * Aktuell:     Bright Sky /current_weather – nächste oder gewählte DWD-Station
+ * Text:        Tagesprognose in Worten aus DWD ICON-D2 (Open-Meteo)
+ * Verlauf:     12 h … 10 Tage; Modell wählbar; Anzeige des Modelllaufs
+ * Karte:       DWD-Radar, EUMETSAT-Satellit, Windy
+ * Luft:        Umweltbundesamt Air Data API – nächstgelegene aktive Messstelle
+ * Pollen:      DWD Pollenflug-Gefahrenindex, außerhalb DE Open-Meteo/CAMS
+ * Favoriten:   Orte inkl. gewählter Station
  */
 'use strict';
-const APP_VERSION = '3.2.0';
+const APP_VERSION = '3.3.0';
+const WIZARD_VERSION = '3.3';   // Assistent erscheint beim ersten Start und wenn sich diese Kennung ändert
 
 // ---------- Endpunkte ----------
 const BS = 'https://api.brightsky.dev';
 const OM = 'https://api.open-meteo.com/v1/forecast';
 const OM_META = 'https://api.open-meteo.com/data';
 const OM_AQ = 'https://air-quality-api.open-meteo.com/v1/air-quality';
+const UBA = ['https://www.umweltbundesamt.de/api/air_data/v3', 'https://www.umweltbundesamt.de/api/air_data/v2'];
 const DWD_POLLEN = 'https://opendata.dwd.de/climate_environment/health/alerts/s31fg.json';
 const DWD_WMS = 'https://maps.dwd.de/geoserver/dwd/wms';
 const DWD_RADAR = 'dwd:Niederschlagsradar';
@@ -25,7 +28,18 @@ const BKG_WMS = 'https://sgx.geodatenzentrum.de/wms_basemapde';
 const YEAR = new Date().getFullYear();
 const BKG_ATTR = `© GeoBasis-DE / <a href="https://www.bkg.bund.de" target="_blank" rel="noopener">BKG</a> (${YEAR}) <a href="https://creativecommons.org/licenses/by/4.0/" target="_blank" rel="noopener">CC BY 4.0</a>`;
 const OSM_ATTR = '&copy; <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noopener">OpenStreetMap</a>';
-const LS = 'wetterapp.settings.v3', LS_RAIN = 'wetterapp.rainNotified', LS_WARN = 'wetterapp.warnNotified', LS_SAT = 'wetterapp.satLayers', LS_CACHE = 'wetterapp.cache.';
+const LS = 'wetterapp.settings.v3', LS_RAIN = 'wetterapp.rainNotified', LS_WARN = 'wetterapp.warnNotified', LS_SAT = 'wetterapp.satLayers', LS_CACHE = 'wetterapp.cache.', LS_UBA = 'wetterapp.ubaStations';
+
+// ---------- Abschnitte der Startseite ----------
+const SECTIONS = [
+  { id: 'warnings', name: 'Wetterwarnungen', sub: 'nur sichtbar, wenn der DWD warnt', icon: 'warn' },
+  { id: 'now', name: 'Aktuelle Werte', sub: 'Station, Sonnenauf-/-untergang', icon: 'thermo' },
+  { id: 'daytext', name: 'Textprognose', sub: 'Tagesvorhersage in Worten', icon: 'text' },
+  { id: 'chart', name: 'Vorhersagediagramm', sub: '12 h bis 10 Tage, Modell wählbar', icon: 'chart' },
+  { id: 'map', name: 'Karte', sub: 'Radar, Satellit, Wind', icon: 'map' },
+  { id: 'air', name: 'Luftqualität', sub: 'Messstelle des Umweltbundesamts', icon: 'air' },
+  { id: 'pollen', name: 'Pollenflug', sub: 'DWD-Gefahrenindex', icon: 'flower' }
+];
 
 // ---------- Zeiträume ----------
 const RANGES = [
@@ -67,13 +81,11 @@ const MODELS = [
 const MOSMIX = MODELS.find(m => m.key === 'mosmix');
 
 // ---------- Pollen ----------
-// k = Schlüssel im DWD-JSON, om = Variable bei Open-Meteo (nur 6 Arten in Europa)
 const POLLEN = [
   { k: 'Hasel', name: 'Hasel' }, { k: 'Erle', name: 'Erle', om: 'alder_pollen' }, { k: 'Esche', name: 'Esche' },
   { k: 'Birke', name: 'Birke', om: 'birch_pollen' }, { k: 'Graeser', name: 'Gräser', om: 'grass_pollen' },
   { k: 'Roggen', name: 'Roggen' }, { k: 'Beifuss', name: 'Beifuß', om: 'mugwort_pollen' }, { k: 'Ambrosia', name: 'Ambrosia', om: 'ragweed_pollen' }
 ];
-// DWD-Vorhersagegebiete mit ungefährem Mittelpunkt (für die automatische Zuordnung)
 const POLLEN_REGIONS = [
   [11, 'Inseln und Marschen', 54.4, 8.8], [12, 'Geest, Schleswig-Holstein und Hamburg', 54.1, 9.8], [20, 'Mecklenburg-Vorpommern', 53.8, 12.6],
   [31, 'Westl. Niedersachsen/Bremen', 52.8, 7.8], [32, 'Östl. Niedersachsen', 52.6, 10.3], [41, 'Rhein.-Westfäl. Tiefland', 51.6, 7.0],
@@ -90,15 +102,28 @@ const PSTEP = { '-1': null, '0': 0, '0-1': 0.5, '1': 1, '1-2': 1.5, '2': 2, '2-3
 const PTXT = ['keine', 'keine bis gering', 'gering', 'gering bis mittel', 'mittel', 'mittel bis hoch', 'hoch'];
 const PCOL = ['#c8e6c9', '#e6ee9c', '#fff176', '#ffd54f', '#ffb74d', '#ff8a65', '#e53935'];
 
+// ---------- Luftqualität (Luftqualitätsindex des Umweltbundesamts) ----------
+// Obergrenzen in µg/m³ für: sehr gut, gut, mäßig, schlecht (darüber: sehr schlecht)
+const AQ_COMP = {
+  1: { code: 'PM10', name: 'Feinstaub PM₁₀', avg: 'Tagesmittel, stündlich gleitend', lim: [20, 35, 50, 100] },
+  9: { code: 'PM2', name: 'Feinstaub PM₂,₅', avg: 'Tagesmittel, stündlich gleitend', lim: [10, 20, 25, 50] },
+  5: { code: 'NO2', name: 'Stickstoffdioxid NO₂', avg: 'Stundenmittel', lim: [20, 40, 100, 200] },
+  3: { code: 'O3', name: 'Ozon O₃', avg: 'Stundenmittel', lim: [60, 120, 180, 240] }
+};
+const AQ_TXT = ['sehr gut', 'gut', 'mäßig', 'schlecht', 'sehr schlecht'];
+const AQ_COL = ['#2bb3a3', '#5cb85c', '#f0c419', '#e67e22', '#c0392b'];
+
 const DEFAULTS = {
   loc: null, station: null, favs: [], basemap: 'bm_grau', sat: 'auto', satDay: '', satNight: '', intervalMin: 10,
   notify: false, warnNotify: true, autoLocate: true, mapMode: 'radar', model: 'icon_d2', rangeH: 12, keys: {},
-  pollen: POLLEN.map(p => p.k), pollenRegion: 'auto', pollenHideZero: false
+  pollen: POLLEN.map(p => p.k), pollenRegion: 'auto', pollenHideZero: false,
+  layout: null, layoutSeen: [], wizardFor: null
 };
 let S = (() => {
   try { const s = Object.assign({}, DEFAULTS, JSON.parse(localStorage.getItem(LS) || '{}')); s.keys = s.keys || {}; s.favs = Array.isArray(s.favs) ? s.favs : []; return s; }
   catch { return { ...DEFAULTS, keys: {}, favs: [] }; }
 })();
+const isUpgrade = !!localStorage.getItem(LS) && S.wizardFor !== WIZARD_VERSION;
 const save = () => localStorage.setItem(LS, JSON.stringify(S));
 
 // ---------- Helpers ----------
@@ -113,15 +138,11 @@ const esc = (s) => String(s ?? '').replace(/[&<>"]/g, c => ({ '&': '&amp;', '<':
 const WD = ['So', 'Mo', 'Di', 'Mi', 'Do', 'Fr', 'Sa'];
 const HOUR = 3600000;
 const dayStart = (t) => { const d = new Date(t); d.setHours(0, 0, 0, 0); return d.getTime(); };
+const ymd = (t) => { const d = new Date(t); return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`; };
 function distKm(a, b, c, d) { const x = rad(c - a), y = rad(d - b); const h = Math.sin(x / 2) ** 2 + Math.cos(rad(a)) * Math.cos(rad(c)) * Math.sin(y / 2) ** 2; return 12742 * Math.asin(Math.sqrt(h)); }
-function ageTxt(ms) {
-  const m = Math.round((Date.now() - ms) / 60000);
-  if (m < 2) return 'gerade eben'; if (m < 60) return `vor ${m} min`;
-  const h = Math.floor(m / 60); return `vor ${h} h${m % 60 >= 10 && h < 6 ? ` ${m % 60} min` : ''}`;
-}
 function whenTxt(ms) {
   const d = new Date(ms), today = dayStart(Date.now());
-  const day = dayStart(ms) === today ? '' : dayStart(ms) === today - 24 * HOUR ? 'gestern ' : `${WD[d.getDay()]} `;
+  const day = dayStart(ms) === today ? 'heute ' : dayStart(ms) === today - 24 * HOUR ? 'gestern ' : `${WD[d.getDay()]} `;
   return `${day}${hhmm(ms)} Uhr`;
 }
 
@@ -156,6 +177,90 @@ async function cachedJSON(url, ttlMin, cacheKey) {
   return res;
 }
 
+// ---------- Startseiten-Layout ----------
+function normLayout() {
+  const def = SECTIONS.map(s => ({ id: s.id, on: true }));
+  if (!Array.isArray(S.layout)) return def;
+  const known = S.layout.filter(l => SECTIONS.some(s => s.id === l.id));
+  for (const s of SECTIONS) if (!known.some(l => l.id === s.id)) {
+    // neue Abschnitte an ihrer Standardposition einfügen
+    const i = SECTIONS.findIndex(x => x.id === s.id), before = SECTIONS.slice(i + 1).map(x => x.id);
+    const pos = known.findIndex(l => before.includes(l.id));
+    known.splice(pos < 0 ? known.length : pos, 0, { id: s.id, on: true });
+  }
+  return known;
+}
+const isOn = (id) => (S.layout || []).find(l => l.id === id)?.on !== false;
+function applyLayout() {
+  const main = $('#content'), credits = $('#credits');
+  for (const l of S.layout) {
+    const el = main.querySelector(`[data-sec="${l.id}"]`); if (!el) continue;
+    main.insertBefore(el, credits);
+    el.toggleAttribute('data-off', !l.on);
+  }
+  if (map && isOn('map')) setTimeout(() => map.invalidateSize(), 60);
+}
+let layoutDraft = null, layoutWasOff = [];
+function openLayout(first = false) {
+  layoutDraft = S.layout.map(l => ({ ...l }));
+  layoutWasOff = S.layout.filter(l => !l.on).map(l => l.id);
+  $('#layoutTitle').textContent = first ? (isUpgrade ? `Neu in Version ${WIZARD_VERSION}: Startseite einrichten` : 'Willkommen! Startseite einrichten') : 'Startseite anpassen';
+  $('#gripHint').innerHTML = I('grip');
+  renderLayoutList();
+  $('#dlgLayout').showModal();
+}
+function renderLayoutList() {
+  const ul = $('#layoutList'); ul.innerHTML = '';
+  layoutDraft.forEach((l, i) => {
+    const s = SECTIONS.find(x => x.id === l.id), isNew = !S.layoutSeen.includes(l.id) && S.layoutSeen.length > 0;
+    const li = document.createElement('li'); li.dataset.id = l.id; li.classList.toggle('off', !l.on);
+    li.innerHTML = `<span class="grip" title="Ziehen zum Verschieben">${I('grip')}</span>`
+      + `<label class="lname">${I(s.icon)}<span>${esc(s.name)}${isNew ? ' <span class="new">neu</span>' : ''}<small>${esc(s.sub)}</small></span></label>`
+      + `<button type="button" class="mv" data-mv="-1" title="Nach oben" ${i === 0 ? 'disabled style="opacity:.35"' : ''}>${I('up')}</button>`
+      + `<button type="button" class="mv" data-mv="1" title="Nach unten" ${i === layoutDraft.length - 1 ? 'disabled style="opacity:.35"' : ''}>${I('down')}</button>`
+      + `<input type="checkbox" ${l.on ? 'checked' : ''} aria-label="${esc(s.name)} anzeigen">`;
+    li.querySelector('input').onchange = (e) => { l.on = e.target.checked; li.classList.toggle('off', !l.on); commitLayout(); };
+    li.querySelector('.lname').onclick = (e) => { if (e.target.tagName !== 'INPUT') { const c = li.querySelector('input'); c.checked = !c.checked; c.onchange({ target: c }); } };
+    li.querySelectorAll('.mv').forEach(b => b.onclick = () => {
+      const j = i + Number(b.dataset.mv); if (j < 0 || j >= layoutDraft.length) return;
+      [layoutDraft[i], layoutDraft[j]] = [layoutDraft[j], layoutDraft[i]]; renderLayoutList(); commitLayout();
+    });
+    initDrag(li, li.querySelector('.grip'));
+    ul.appendChild(li);
+  });
+}
+function initDrag(li, handle) {
+  // Ereignisse am Fenster abhören: das Element wird während des Ziehens im DOM umgehängt,
+  // dabei ginge eine Pointer-Capture verloren
+  handle.addEventListener('pointerdown', (e) => {
+    e.preventDefault();
+    const ul = li.parentElement; li.classList.add('dragging');
+    const move = (ev) => {
+      ev.preventDefault();
+      const sibs = [...ul.children].filter(x => x !== li);
+      const after = sibs.find(x => { const r = x.getBoundingClientRect(); return ev.clientY < r.top + r.height / 2; });
+      if (after) { if (li.nextElementSibling !== after) ul.insertBefore(li, after); } else if (ul.lastElementChild !== li) ul.appendChild(li);
+    };
+    const up = () => {
+      window.removeEventListener('pointermove', move); window.removeEventListener('pointerup', up); window.removeEventListener('pointercancel', up);
+      li.classList.remove('dragging');
+      const order = [...ul.children].map(x => x.dataset.id);
+      layoutDraft.sort((a, b) => order.indexOf(a.id) - order.indexOf(b.id));
+      renderLayoutList(); commitLayout();
+    };
+    window.addEventListener('pointermove', move, { passive: false }); window.addEventListener('pointerup', up); window.addEventListener('pointercancel', up);
+  });
+}
+function commitLayout() { S.layout = layoutDraft.map(l => ({ ...l })); save(); applyLayout(); }
+let afterLayout = null;
+function closeLayout() {
+  S.layoutSeen = SECTIONS.map(s => s.id); S.wizardFor = WIZARD_VERSION; save();
+  $('#dlgLayout').close();
+  if (afterLayout) { const f = afterLayout; afterLayout = null; f(); }
+  // eben eingeschaltete Abschnitte sofort laden
+  if (S.layout.some(l => l.on && layoutWasOff.includes(l.id))) refresh();
+}
+
 // ---------- Sonne ----------
 function sunElevation(lat, lon, date = new Date()) {
   const d = (date - Date.UTC(2000, 0, 1, 12)) / 86400000;
@@ -168,8 +273,7 @@ function sunElevation(lat, lon, date = new Date()) {
 function sunTimes(dayMs, lat, lon) {
   const noon = new Date(dayMs); noon.setHours(12, 0, 0, 0);
   const jd = noon.getTime() / 86400000 + 2440587.5;
-  const n = Math.round(jd - 2451545.0 + 0.0008);
-  const Js = n - lon / 360;
+  const n = Math.round(jd - 2451545.0 + 0.0008), Js = n - lon / 360;
   const M = (357.5291 + 0.98560028 * Js) % 360;
   const C = 1.9148 * Math.sin(rad(M)) + 0.02 * Math.sin(rad(2 * M)) + 0.0003 * Math.sin(rad(3 * M));
   const lam = (M + C + 180 + 102.9372) % 360;
@@ -194,7 +298,7 @@ function renderSun() {
     + `<span class="muted" title="Tageslänge">${I('daylen')}${Math.floor(len / 60)} h ${String(len % 60).padStart(2, '0')} min${label}</span>`;
 }
 
-// ---------- 1. Aktuelles Wetter ----------
+// ---------- Aktuelles Wetter ----------
 const ICON_TXT = { 'clear-day': 'Sonnig', 'clear-night': 'Klar', 'partly-cloudy-day': 'Teilweise bewölkt', 'partly-cloudy-night': 'Teilweise bewölkt', cloudy: 'Bewölkt', fog: 'Nebel', wind: 'Windig', rain: 'Regen', sleet: 'Schneeregen', snow: 'Schnee', hail: 'Hagel', thunderstorm: 'Gewitter' };
 const COND = { fog: 'Nebel', rain: 'Regen', sleet: 'Schneeregen', snow: 'Schnee', hail: 'Hagel', thunderstorm: 'Gewitter' };
 async function loadCurrent(lat, lon) {
@@ -246,10 +350,8 @@ async function openStationDialog() {
       li.appendChild(b); ul.appendChild(li);
     };
     add('Automatisch', 'immer die nächstgelegene Station mit aktuellen Werten', !S.station, () => { S.station = null; save(); drawStationMarker(); });
-    for (const s of list) {
-      add(s.station_name, `${fmt(s.km, 0)} km · ${fmt(s.height, 0)} m ü. NN · WMO ${s.wmo_station_id}`, S.station?.wmo === s.wmo_station_id,
-        () => { S.station = { wmo: s.wmo_station_id, name: s.station_name, lat: s.lat, lon: s.lon }; save(); drawStationMarker(); });
-    }
+    for (const s of list) add(s.station_name, `${fmt(s.km, 0)} km · ${fmt(s.height, 0)} m ü. NN · WMO ${s.wmo_station_id}`, S.station?.wmo === s.wmo_station_id,
+      () => { S.station = { wmo: s.wmo_station_id, name: s.station_name, lat: s.lat, lon: s.lon }; save(); drawStationMarker(); });
     if (!list.length) ul.insertAdjacentHTML('beforeend', '<li class="muted small">Keine weiteren Stationen im Umkreis gefunden.</li>');
   } catch (e) { ul.innerHTML = `<li class="muted small">Stationen nicht abrufbar (${esc(e.message)})</li>`; }
 }
@@ -265,6 +367,8 @@ async function modelRun(m) {
     metaCache[m.meta] = { ts: Date.now(), run }; return run;
   } catch { metaCache[m.meta] = { ts: Date.now(), run: null }; return null; }
 }
+// Text: „Modelllauf heute 06:00 Uhr“ bzw. ohne bekannten Lauf „Datenstand …“
+const runTxt = (run, at) => run ? `Modelllauf ${whenTxt(run)}` : `Datenstand ${whenTxt(at)}`;
 
 // ---------- Vorhersage-Abruf ----------
 const ms2kmh = (v) => v == null ? null : v * 3.6;
@@ -335,7 +439,7 @@ async function fetchModel(m, lat, lon, H) {
   return { ...(await KEY_FETCH[m.prov](lat, lon, key)), run: null };
 }
 
-// ---------- 2. Verlauf ----------
+// ---------- Verlauf ----------
 const currentModel = () => MODELS.find(m => m.key === S.model) || MODELS[0];
 const range = () => RANGES.find(r => r.h === S.rangeH) || RANGES[0];
 let fcSeq = 0;
@@ -356,16 +460,9 @@ async function loadForecast(lat, lon) {
   const t0 = start.getTime(), t1 = t0 + R.h * HOUR;
   const rows = res.rows.filter(r => r.temp != null && r.t >= t0 - 3 * HOUR && r.t <= t1 + 3 * HOUR).sort((a, b) => a.t - b.t);
   if (rows.filter(r => r.t >= t0 && r.t <= t1).length < 2) throw new Error(`${used.name} liefert für diesen Ort keine Daten`);
-  renderModelInfo(used, res);
+  $('#modelInfo').innerHTML = `${I('clock')} <span><b>${esc(used.name)}</b> · ${runTxt(res.run, res.at)}</span>`;
+  $('#modelInfo').title = used.info;
   drawChart(rows, t0, t1, used);
-}
-function renderModelInfo(m, res) {
-  const parts = [`<b>${esc(m.name)}</b>`];
-  if (res.run) parts.push(`Modelllauf ${whenTxt(res.run)}`);
-  const old = Date.now() - res.at > 30 * 60000;
-  parts.push(`<span class="${old ? 'old' : ''}">abgerufen ${hhmm(res.at)} Uhr (${ageTxt(res.at)})</span>`);
-  $('#modelInfo').innerHTML = `${I('clock')} <span>${parts.join(' · ')}</span>`;
-  $('#modelInfo').title = m.info;
 }
 
 let lastChart = null;
@@ -532,11 +629,10 @@ async function loadDayText(lat, lon) {
   catch { model = MODELS.find(m => m.key === 'icon_seamless'); res = await get(model); }
   const run = await modelRun(model);
   const out = buildDayText(res.rows, Date.now());
-  if (!out) { $('#dayCard').hidden = true; return; }
+  if (!out) { $('#dayText').textContent = 'Keine Textprognose verfügbar.'; $('#dayIcon').innerHTML = ''; $('#daySource').textContent = ''; return; }
   $('#dayIcon').innerHTML = window.ICONS.weather(out.icon);
   $('#dayText').textContent = out.text;
-  $('#daySource').textContent = `Textprognose nach ${model.name}${run ? ` · Modelllauf ${whenTxt(run)}` : ''} · abgerufen ${hhmm(res.at)} Uhr`;
-  $('#dayCard').hidden = false;
+  $('#daySource').textContent = `${model.name.replace(' (2 km)', '')} · ${runTxt(run, res.at)}`;
 }
 function buildDayText(rows, now) {
   const tomorrow = new Date(now).getHours() >= 20;
@@ -607,7 +703,7 @@ function buildDayText(rows, now) {
   return { text: text.replace(/\s+/g, ' ').trim(), icon };
 }
 
-// ---------- Warnungen (ganz oben, nur wenn vorhanden) ----------
+// ---------- Warnungen ----------
 const sevRank = (s) => ({ minor: 1, moderate: 2, severe: 3, extreme: 4 }[s] || 0);
 async function loadWarnings(lat, lon) {
   const d = await getJSON(`${BS}/alerts?lat=${lat.toFixed(4)}&lon=${lon.toFixed(4)}&tz=Europe/Berlin`);
@@ -636,22 +732,100 @@ async function loadWarnings(lat, lon) {
   }
 }
 
-// ---------- Pollen ----------
-let dwdPollen = null; // { ts, data }
-const isGermany = () => !S.loc || (S.loc.lat > 47.2 && S.loc.lat < 55.1 && S.loc.lon > 5.8 && S.loc.lon < 15.1 && (!S.loc.sub || /deutschland|germany/i.test(S.loc.sub)));
-function autoPollenRegion(lat, lon) {
-  let best = null, bd = Infinity;
-  for (const r of POLLEN_REGIONS) { const d = distKm(lat, lon, r[2], r[3]); if (d < bd) { bd = d; best = r; } }
-  return best;
+// ---------- Luftqualität (Umweltbundesamt) ----------
+let ubaBase = null;
+async function ubaJSON(path) {
+  const bases = ubaBase ? [ubaBase] : UBA;
+  let err;
+  for (const b of bases) {
+    try { const r = await fetchJSON(`${b}${path}`); ubaBase = b; return r; } catch (e) { err = e; }
+  }
+  throw err;
 }
+// Stationsliste (einmal pro Woche): [{ id, code, name, city, lat, lon }]
+async function ubaStations() {
+  try { const c = JSON.parse(localStorage.getItem(LS_UBA) || 'null'); if (c && Date.now() - c.ts < 7 * 86400000 && c.list?.length) return c.list; } catch { }
+  const { data: d } = await ubaJSON('/stations/json?use=airquality&lang=de');
+  const idx = Array.isArray(d.indices) ? d.indices.map(s => String(s).toLowerCase()) : [];
+  const pos = (re, fb) => { const i = idx.findIndex(s => re.test(s)); return i >= 0 ? i : fb; };
+  const P = { id: pos(/station id/, 0), code: pos(/station code/, 1), name: pos(/station name/, 2), city: pos(/station city/, 3), to: pos(/active to/, 6), lon: pos(/longitude/, 7), lat: pos(/latitude/, 8) };
+  const list = [];
+  for (const row of Object.values(d.data || {})) {
+    if (!Array.isArray(row)) continue;
+    const lat = parseFloat(row[P.lat]), lon = parseFloat(row[P.lon]);
+    if (!isFinite(lat) || !isFinite(lon)) continue;
+    const to = row[P.to]; if (to && String(to).trim() && new Date(String(to).replace(' ', 'T')) < new Date()) continue;   // stillgelegt
+    list.push({ id: String(row[P.id]), code: row[P.code], name: row[P.name], city: row[P.city], lat, lon });
+  }
+  if (!list.length) throw new Error('keine Messstellen');
+  try { localStorage.setItem(LS_UBA, JSON.stringify({ ts: Date.now(), list })); } catch { }
+  return list;
+}
+const aqLevel = (comp, v) => { const lim = AQ_COMP[comp]?.lim; if (!lim || v == null) return null; let i = 0; while (i < 4 && v > lim[i]) i++; return i; };
+// Aktuellste Messung einer Station
+async function ubaLatest(st) {
+  const now = Date.now();
+  const q = `/airquality/json?station=${encodeURIComponent(st.id)}&date_from=${ymd(now - 24 * HOUR)}&time_from=1&date_to=${ymd(now)}&time_to=24&lang=de`;
+  const { data: d, at } = await ubaJSON(q);
+  const per = d.data?.[st.id] || Object.values(d.data || {})[0];
+  if (!per) return null;
+  const keys = Object.keys(per).sort();
+  for (let k = keys.length - 1; k >= 0; k--) {
+    const rec = per[keys[k]]; if (!Array.isArray(rec)) continue;
+    const comps = {};
+    for (const c of rec) if (Array.isArray(c) && c.length >= 2 && AQ_COMP[Number(c[0])]) {
+      const v = parseFloat(c[1]); if (isFinite(v)) comps[Number(c[0])] = v;
+    }
+    if (Object.keys(comps).length) return { time: rec[0] && /\d{4}-\d{2}-\d{2}/.test(rec[0]) ? rec[0] : keys[k], comps, at };
+  }
+  return null;
+}
+async function loadAir(lat, lon) {
+  const all = await ubaStations();
+  const near = all.map(s => ({ ...s, km: distKm(lat, lon, s.lat, s.lon) })).sort((a, b) => a.km - b.km).slice(0, 4);
+  if (!near.length || near[0].km > 80) { renderAir(null, 'Keine Messstelle des Umweltbundesamts in der Nähe (nur Deutschland).'); return; }
+  for (const st of near) {
+    try {
+      const m = await ubaLatest(st);
+      if (!m) continue;
+      const t = new Date(String(m.time).replace(' ', 'T'));
+      if (isFinite(t) && Date.now() - t > 12 * HOUR) continue;     // veraltet → nächste Station
+      renderAir({ st, ...m }); return;
+    } catch (e) { console.warn('UBA', st.name, e.message); }
+  }
+  renderAir(null, 'Die nächstgelegenen Messstellen liefern derzeit keine aktuellen Werte.');
+}
+function renderAir(r, msg) {
+  const body = $('#airBody'), badge = $('#airBadge');
+  if (!r) { body.className = 'small muted'; body.textContent = msg; badge.hidden = true; $('#airInfo').textContent = ''; return; }
+  const order = [1, 9, 5, 3].filter(c => r.comps[c] != null);
+  const levels = order.map(c => aqLevel(c, r.comps[c]));
+  const worst = Math.max(...levels);
+  badge.hidden = false; badge.textContent = AQ_TXT[worst]; badge.style.background = AQ_COL[worst];
+  body.className = '';
+  body.innerHTML = `<div class="airlist">` + order.map((c, i) => {
+    const lv = levels[i], bar = [0, 1, 2, 3, 4].map(k => `<i style="${k <= lv ? `background:${AQ_COL[lv]}` : ''}"></i>`).join('');
+    return `<div class="aname">${esc(AQ_COMP[c].name)}<small>${esc(AQ_COMP[c].avg)}</small></div>`
+      + `<div><div class="abar">${bar}</div><div class="alabel">${AQ_TXT[lv]}</div></div>`
+      + `<div class="aval">${fmt(r.comps[c], 0)} µg/m³</div>`;
+  }).join('') + `</div>`;
+  const t = String(r.time).match(/(\d{4})-(\d{2})-(\d{2})\s+(\d{2}):(\d{2})/);
+  const when = t ? `${t[3]}.${t[2]}. ${t[4]}:${t[5]} Uhr` : r.time;
+  $('#airInfo').textContent = `Messstelle ${r.st.name}${r.st.city && !String(r.st.name).includes(r.st.city) ? ` (${r.st.city})` : ''} · ${fmt(r.st.km, 0)} km · Messung ${when} · Gesamtbewertung nach dem schlechtesten Einzelwert (Luftqualitätsindex des UBA) · vorläufige Daten`;
+}
+
+// ---------- Pollen ----------
+let dwdPollen = null;
+const isGermany = () => !S.loc || (S.loc.lat > 47.2 && S.loc.lat < 55.1 && S.loc.lon > 5.8 && S.loc.lon < 15.1 && (!S.loc.sub || /deutschland|germany/i.test(S.loc.sub)));
+function autoPollenRegion(lat, lon) { let best = null, bd = Infinity; for (const r of POLLEN_REGIONS) { const d = distKm(lat, lon, r[2], r[3]); if (d < bd) { bd = d; best = r; } } return best; }
 const regionOf = (id) => POLLEN_REGIONS.find(r => r[0] === Number(id));
 async function getDwdPollen() {
   if (dwdPollen && Date.now() - dwdPollen.ts < 60 * 60000) return dwdPollen;
   const { data, at } = await fetchJSON(DWD_POLLEN);
   dwdPollen = { ts: Date.now(), at, data }; return dwdPollen;
 }
-// "2026-10-12 11:00 Uhr" → ms (Ortszeit)
 const parseDwdTime = (s) => { const m = String(s || '').match(/(\d{4})-(\d{2})-(\d{2})\s+(\d{1,2}):(\d{2})/); return m ? new Date(+m[1], m[2] - 1, +m[3], +m[4], +m[5]).getTime() : null; };
+const dayLabel = (t) => { const today = dayStart(Date.now()); return t === today ? 'Heute' : t === today + 24 * HOUR ? 'Morgen' : `${WD[new Date(t).getDay()]} ${new Date(t).getDate()}.`; };
 async function loadPollen(lat, lon) {
   const sel = POLLEN.filter(p => S.pollen.includes(p.k));
   if (!sel.length) { renderPollen(null, [], 'Keine Pollenart gewählt – über „Pollenarten wählen“ festlegen.'); return; }
@@ -666,33 +840,28 @@ async function loadPollen(lat, lon) {
       const keys = ['today', 'tomorrow', 'dayafter_to'].slice(shift);
       const days = keys.map((_, i) => dayLabel(dayStart(Date.now()) + i * 24 * HOUR));
       const rows = sel.map(p => ({ name: p.name, vals: keys.map(k => PSTEP[entry.Pollen?.[p.k]?.[k]] ?? null) }));
-      renderPollen(days, rows, `DWD Pollenflug-Gefahrenindex · Gebiet ${reg[1]}${S.pollenRegion === 'auto' ? ' (automatisch)' : ''} · Stand ${upd ? whenTxt(upd) : data.last_update} · abgerufen ${hhmm(at)} Uhr`);
+      renderPollen(days, rows, `DWD Pollenflug-Gefahrenindex · Gebiet ${reg[1]}${S.pollenRegion === 'auto' ? ' (automatisch)' : ''} · Stand ${upd ? whenTxt(upd) : data.last_update}`);
       return;
     } catch (e) { console.warn('DWD-Pollen:', e.message); }
   }
-  // Rückfall: Open-Meteo (CAMS), Konzentration in Körnern/m³ → Stufen
   const om = sel.filter(p => p.om);
   const q = new URLSearchParams({ latitude: lat.toFixed(4), longitude: lon.toFixed(4), hourly: (om.length ? om : POLLEN.filter(p => p.om)).map(p => p.om).join(','), timezone: 'auto', timeformat: 'unixtime', forecast_days: '3' });
   const { data: d, at } = await fetchJSON(`${OM_AQ}?${q}`);
   const h = d.hourly || {}, t = (h.time || []).map(x => x * 1000);
   const base = dayStart(Date.now());
   const days = [0, 1, 2].map(i => dayLabel(base + i * 24 * HOUR));
-  const level = (k, v) => {   // grobe Einteilung je Pollenart (Körner/m³, Tagesmaximum)
+  const level = (k, v) => {
     if (v == null) return null;
     const th = k === 'grass_pollen' ? [1, 5, 15, 30, 50, 100] : k === 'ragweed_pollen' || k === 'mugwort_pollen' ? [1, 3, 6, 10, 20, 40] : [1, 10, 30, 50, 100, 200];
     let s = 0; for (const x of th) if (v >= x) s += 0.5; return s;
   };
-  const rows = sel.map(p => ({
-    name: p.name,
-    vals: [0, 1, 2].map(i => {
-      if (!p.om) return null;
-      const vs = t.map((x, j) => x >= base + i * 24 * HOUR && x < base + (i + 1) * 24 * HOUR ? h[p.om]?.[j] : null).filter(v => v != null);
-      return vs.length ? level(p.om, Math.max(...vs)) : null;
-    })
-  }));
-  renderPollen(days, rows, `Open-Meteo / CAMS (Modell, 11 km) · Stufen aus Pollenkonzentration abgeleitet · abgerufen ${hhmm(at)} Uhr${isGermany() ? ' · DWD-Daten derzeit nicht abrufbar' : ''}`);
+  const rows = sel.map(p => ({ name: p.name, vals: [0, 1, 2].map(i => {
+    if (!p.om) return null;
+    const vs = t.map((x, j) => x >= base + i * 24 * HOUR && x < base + (i + 1) * 24 * HOUR ? h[p.om]?.[j] : null).filter(v => v != null);
+    return vs.length ? level(p.om, Math.max(...vs)) : null;
+  }) }));
+  renderPollen(days, rows, `Open-Meteo / CAMS (Modell, 11 km) · Stufen aus Pollenkonzentration abgeleitet · Datenstand ${whenTxt(at)}${isGermany() ? ' · DWD-Daten derzeit nicht abrufbar' : ''}`);
 }
-const dayLabel = (t) => { const today = dayStart(Date.now()); return t === today ? 'Heute' : t === today + 24 * HOUR ? 'Morgen' : `${WD[new Date(t).getDay()]} ${new Date(t).getDate()}.`; };
 function renderPollen(days, rows, info) {
   const body = $('#pollenBody');
   $('#pollenScale').innerHTML = PTXT.map((t, i) => i % 2 === 0 ? `<span><i style="background:${PCOL[i]}"></i>${t}</span>` : '').join('') + '<span class="muted">(Zwischenstufen möglich)</span>';
@@ -1025,22 +1194,22 @@ function renderLoc() {
   renderFavBtn();
 }
 
-// ---------- Aktualisierung ----------
+// ---------- Aktualisierung (nur eingeschaltete Abschnitte) ----------
 let busy = false, again = false;
 async function refresh() {
   if (!S.loc) return;
   if (busy) { again = true; return; }
   busy = true; $('#btnRefresh').classList.add('spin');
   const { lat, lon } = S.loc; offlineHits = 0;
-  refreshMapLayers(); renderSun();
-  await Promise.allSettled([
-    loadWarnings(lat, lon).catch(() => { $('#warnings').innerHTML = ''; }),
-    loadCurrent(lat, lon).catch(e => { $('#nowStation').textContent = `Aktuelle Werte nicht abrufbar (${e.message})`; }),
-    loadDayText(lat, lon).catch(() => { $('#dayCard').hidden = true; }),
-    loadForecast(lat, lon).catch(showForecastError),
-    loadRadar(lat, lon).then(renderRainHint).catch(() => renderRainHint(null)),
-    loadPollen(lat, lon).catch(e => renderPollen(null, [], `Pollenvorhersage nicht abrufbar (${e.message}).`))
-  ]);
+  const jobs = [];
+  if (isOn('warnings')) jobs.push(loadWarnings(lat, lon).catch(() => { $('#warnings').innerHTML = ''; }));
+  if (isOn('now')) { renderSun(); jobs.push(loadCurrent(lat, lon).catch(e => { $('#nowStation').textContent = `Aktuelle Werte nicht abrufbar (${e.message})`; })); }
+  if (isOn('daytext')) jobs.push(loadDayText(lat, lon).catch(e => { $('#dayText').textContent = `Textprognose nicht abrufbar (${e.message}).`; }));
+  if (isOn('chart')) jobs.push(loadForecast(lat, lon).catch(showForecastError));
+  if (isOn('map')) { refreshMapLayers(); jobs.push(loadRadar(lat, lon).then(renderRainHint).catch(() => renderRainHint(null))); }
+  if (isOn('air')) jobs.push(loadAir(lat, lon).catch(e => renderAir(null, `Luftdaten nicht abrufbar (${e.message}).`)));
+  if (isOn('pollen')) jobs.push(loadPollen(lat, lon).catch(e => renderPollen(null, [], `Pollenvorhersage nicht abrufbar (${e.message}).`)));
+  await Promise.allSettled(jobs);
   $('#offline').hidden = !(offlineHits > 0 || !navigator.onLine);
   busy = false; $('#btnRefresh').classList.remove('spin');
   if (again) { again = false; refresh(); }
@@ -1070,6 +1239,8 @@ function initSettings() {
   bind('#setSatNight', 'satNight', v => v.trim(), satChanged);
   bind('#setInterval', 'intervalMin', Number, schedule);
   bind('#setNotify', 'notify'); bind('#setWarnNotify', 'warnNotify'); bind('#setAuto', 'autoLocate');
+  $('#btnLayout').innerHTML = `${I('layout')} Abschnitte auswählen und sortieren`;
+  $('#btnLayout').onclick = () => { $('#dlgSettings').close(); openLayout(false); };
   const box = $('#keyFields');
   box.innerHTML = Object.entries(KEY_PROVIDERS).map(([id, p]) => `
     <div class="keyrow">
@@ -1125,13 +1296,16 @@ function initPwa() {
 
 // ---------- Start ----------
 function init() {
+  // Update von einer Version ohne Assistent: bekannte Abschnitte als „gesehen“ markieren, damit neue als „neu“ erscheinen
+  if (isUpgrade && !S.layoutSeen.length) S.layoutSeen = SECTIONS.map(x => x.id).filter(id => id !== 'air');
+  S.layout = normLayout(); save(); applyLayout();
   $('#bkgYear').textContent = `(${YEAR})`;
-  $('#appVersion').textContent = `· Version ${APP_VERSION}`;
+  $('#appVersion').textContent = `Version ${APP_VERSION}`;
   $('#btnLocate').innerHTML = I('gps'); $('#btnSearch').innerHTML = I('search'); $('#btnRefresh').innerHTML = I('refresh');
   $('#btnSettings').innerHTML = I('gear'); $('#btnInstall').innerHTML = I('install'); $('#locChevron').innerHTML = I('chevron');
   $('#stationIco').innerHTML = I('station'); $('#stationChevron').innerHTML = I('chevron');
   $('#btnPlacesGps').innerHTML = `${I('gps')} Mein Standort`; $('#btnPlacesSearch').innerHTML = `${I('search')} Ort suchen`;
-  $('#nowIcon').innerHTML = window.ICONS.weather('unknown');
+  $('#nowIcon').innerHTML = window.ICONS.weather('unknown'); $('#airIco').innerHTML = I('air');
   initForecastControls(); initSettings(); initPollenDialog(); initMap(); setMapMode(S.mapMode, false); renderLoc(); initPwa();
   $('#btnFav').onclick = toggleFav; $('#btnPlaces').onclick = openPlaces;
   $('#btnPlacesGps').onclick = () => { $('#dlgPlaces').close(); locate(); };
@@ -1144,11 +1318,16 @@ function init() {
   $('#searchForm').onsubmit = (e) => { e.preventDefault(); doSearch(); };
   $('#tabRadar').onclick = () => setMapMode('radar'); $('#tabSat').onclick = () => setMapMode('sat');
   $('#tabBoth').onclick = () => setMapMode('both'); $('#tabWind').onclick = () => setMapMode('wind');
+  $('#btnLayoutDone').onclick = closeLayout;
+  $('#dlgLayout').addEventListener('cancel', (e) => { e.preventDefault(); closeLayout(); });
+  $('#btnLayoutReset').onclick = () => { layoutDraft = SECTIONS.map(s => ({ id: s.id, on: true })); renderLayoutList(); commitLayout(); };
   discoverSatLayers().then(() => { if (S.mapMode === 'sat' || S.mapMode === 'both') setMapMode(S.mapMode, false); });
   if (S.loc) { drawMarker(); renderSun(); if (map) map.setView([S.loc.lat, S.loc.lon], 9); refresh(); }
-  if (S.autoLocate || !S.loc) locate();
+  const startLocate = () => { if (S.autoLocate || !S.loc) locate(); };
+  // Assistent zuerst – Standortabfrage bzw. Ortssuche erst danach, damit sich keine Dialoge überlagern
+  if (S.wizardFor !== WIZARD_VERSION) { afterLayout = startLocate; openLayout(true); } else startLocate();
   schedule();
-  setInterval(renderSun, 10 * 60000);
+  setInterval(() => { if (isOn('now')) renderSun(); }, 10 * 60000);
 }
 let rsT;
 window.addEventListener('resize', () => { clearTimeout(rsT); rsT = setTimeout(() => { if (lastChart) drawChart(...lastChart); }, 150); });

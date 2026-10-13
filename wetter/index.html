@@ -4,7 +4,7 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
   <meta name="theme-color" content="#0b5cab">
-  <meta name="description" content="Wetter-App: DWD-Station, Textprognose, Verlauf bis 10 Tage mit Modellwahl, DWD-Warnungen, Radar, Satellit, Wind und Pollenflug">
+  <meta name="description" content="Wetter-App: DWD-Station, Warnungen, Textprognose, Verlauf bis 10 Tage, Radar, Satellit, Wind, Luftqualität und Pollenflug">
   <meta name="mobile-web-app-capable" content="yes">
   <meta name="apple-mobile-web-app-capable" content="yes">
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
@@ -33,12 +33,11 @@
   </header>
   <div id="offline" class="offline" hidden>Offline – es werden die zuletzt gespeicherten Daten angezeigt.</div>
 
-  <main class="content">
-    <!-- 0. Warnungen (nur sichtbar, wenn es welche gibt) -->
-    <section id="warnings" class="warnings" aria-live="polite"></section>
+  <main class="content" id="content">
+    <!-- Reihenfolge und Sichtbarkeit der Abschnitte werden per Assistent/Einstellungen gesteuert -->
+    <section data-sec="warnings" id="warnings" class="warnings" aria-live="polite"></section>
 
-    <!-- 1. Aktuell -->
-    <section class="card now">
+    <section data-sec="now" class="card now">
       <div class="now-main">
         <div class="now-icon" id="nowIcon"></div>
         <div>
@@ -53,17 +52,15 @@
       </button>
     </section>
 
-    <!-- 2. Textprognose -->
-    <section class="card daytext" id="dayCard" hidden>
+    <section data-sec="daytext" class="card daytext" id="dayCard">
       <div class="dt-icon" id="dayIcon"></div>
       <div>
-        <div class="dt-text" id="dayText"></div>
+        <div class="dt-text" id="dayText">Lade Textprognose …</div>
         <div class="small muted" id="daySource"></div>
       </div>
     </section>
 
-    <!-- 3. Verlauf -->
-    <section class="card">
+    <section data-sec="chart" class="card">
       <div class="chart-head">
         <h3 id="chartTitle">Die nächsten 12 Stunden</h3>
         <select id="modelSelect" aria-label="Wettermodell"></select>
@@ -74,8 +71,7 @@
       <div class="small muted" id="chartInfo"></div>
     </section>
 
-    <!-- 4. Karte -->
-    <section class="card mapcard">
+    <section data-sec="map" class="card mapcard">
       <div class="map-head">
         <h3 id="mapTitle">Regenradar</h3>
         <div class="seg" role="tablist">
@@ -99,8 +95,16 @@
       </div>
     </section>
 
-    <!-- 5. Pollenflug -->
-    <section class="card pollen" id="pollenCard">
+    <section data-sec="air" class="card air" id="airCard">
+      <div class="chart-head">
+        <h3><span id="airIco"></span> Luftqualität</h3>
+        <span class="aqi-badge" id="airBadge" hidden></span>
+      </div>
+      <div id="airBody" class="small muted">Lade Luftdaten …</div>
+      <div class="small muted" id="airInfo"></div>
+    </section>
+
+    <section data-sec="pollen" class="card pollen" id="pollenCard">
       <div class="chart-head">
         <h3><span id="pollenIco"></span> Pollenflug</h3>
         <button type="button" class="linkbtn small" id="btnPollenCfg">Pollenarten wählen</button>
@@ -110,25 +114,41 @@
       <div class="small muted" id="pollenInfo"></div>
     </section>
 
-    <footer class="small muted foot">
-      Wetterdaten, Warnungen &amp; Radar: <a href="https://www.dwd.de/" target="_blank" rel="noopener">Deutscher Wetterdienst</a>
-      über <a href="https://brightsky.dev/" target="_blank" rel="noopener">Bright Sky</a> und
-      <a href="https://www.dwd.de/DE/leistungen/geodienste/geodienste.html" target="_blank" rel="noopener">DWD-Geodienste</a>.
-      Pollen: <a href="https://www.dwd.de/pollenflug" target="_blank" rel="noopener">DWD Pollenflug-Gefahrenindex</a>
-      (außerhalb Deutschlands: Open-Meteo / CAMS).
-      Weitere Modelle: <a href="https://open-meteo.com/" target="_blank" rel="noopener">Open-Meteo</a> (CC BY 4.0)
-      bzw. die Anbieter mit eigenem API-Key.
-      Satellit: <a href="https://view.eumetsat.int/" target="_blank" rel="noopener">EUMETSAT</a> (CC BY 4.0).
-      Wind: <a href="https://www.windy.com/" target="_blank" rel="noopener">Windy.com</a>.
-      Karte: © GeoBasis-DE / <a href="https://www.bkg.bund.de" target="_blank" rel="noopener">BKG</a> <span id="bkgYear"></span>
-      <a href="https://creativecommons.org/licenses/by/4.0/" target="_blank" rel="noopener">CC BY 4.0</a>.
-      Ortssuche: Open-Meteo, Ortsnamen: <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noopener">OpenStreetMap</a>.
-      Sonnenauf-/-untergang berechnet.
-      <span id="appVersion"></span>
-    </footer>
+    <details class="small muted foot" id="credits">
+      <summary>Quellen &amp; Lizenzen · <span id="appVersion"></span></summary>
+      <p>
+        Wetterdaten, Warnungen &amp; Radar: <a href="https://www.dwd.de/" target="_blank" rel="noopener">Deutscher Wetterdienst</a>
+        über <a href="https://brightsky.dev/" target="_blank" rel="noopener">Bright Sky</a> und
+        <a href="https://www.dwd.de/DE/leistungen/geodienste/geodienste.html" target="_blank" rel="noopener">DWD-Geodienste</a>.
+        Pollen: <a href="https://www.dwd.de/pollenflug" target="_blank" rel="noopener">DWD Pollenflug-Gefahrenindex</a>
+        (außerhalb Deutschlands: Open-Meteo / CAMS).
+        Luftqualität: <a href="https://www.umweltbundesamt.de/daten/luft/luftdaten" target="_blank" rel="noopener">Umweltbundesamt mit Daten der Messnetze der Länder und des Bundes</a>
+        (<a href="https://www.govdata.de/dl-de/by-2-0" target="_blank" rel="noopener">dl-de/by-2-0</a>).
+        Weitere Modelle: <a href="https://open-meteo.com/" target="_blank" rel="noopener">Open-Meteo</a> (CC BY 4.0)
+        bzw. die Anbieter mit eigenem API-Key.
+        Satellit: <a href="https://view.eumetsat.int/" target="_blank" rel="noopener">EUMETSAT</a> (CC BY 4.0).
+        Wind: <a href="https://www.windy.com/" target="_blank" rel="noopener">Windy.com</a>.
+        Karte: © GeoBasis-DE / <a href="https://www.bkg.bund.de" target="_blank" rel="noopener">BKG</a> <span id="bkgYear"></span>
+        <a href="https://creativecommons.org/licenses/by/4.0/" target="_blank" rel="noopener">CC BY 4.0</a>.
+        Ortssuche: Open-Meteo, Ortsnamen: <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noopener">OpenStreetMap</a>.
+        Sonnenauf-/-untergang berechnet.
+      </p>
+    </details>
   </main>
 
-  <!-- Orte & Favoriten -->
+  <!-- Startseiten-Assistent -->
+  <dialog id="dlgLayout">
+    <div>
+      <h3 id="layoutTitle">Startseite einrichten</h3>
+      <p class="small muted" id="layoutIntro">Wähle, welche Abschnitte angezeigt werden. Zum Verschieben am Griff <span id="gripHint"></span> ziehen oder die Pfeile nutzen.</p>
+      <ul id="layoutList" class="layout-list"></ul>
+      <div class="row">
+        <button type="button" class="secondary" id="btnLayoutReset">Standard</button>
+      </div>
+      <div class="row end"><button type="button" id="btnLayoutDone">Fertig</button></div>
+    </div>
+  </dialog>
+
   <dialog id="dlgPlaces">
     <div>
       <h3>Orte</h3>
@@ -158,13 +178,12 @@
   <dialog id="dlgStation">
     <div>
       <h3>DWD-Wetterstation wählen</h3>
-      <p class="small muted">Stationen mit aktuellen Messwerten im Umkreis von 60 km. Die Auswahl gilt für die aktuellen Werte und Sonnenauf-/-untergang oben und wird mit dem Favoriten gespeichert.</p>
+      <p class="small muted">Stationen mit aktuellen Messwerten im Umkreis von 60 km. Die Auswahl gilt für die aktuellen Werte und Sonnenauf-/-untergang und wird mit dem Favoriten gespeichert.</p>
       <ul id="stationList" class="results"></ul>
       <div class="row end"><button type="button" class="secondary" id="btnCloseStation">Schließen</button></div>
     </div>
   </dialog>
 
-  <!-- Pollen-Einstellungen -->
   <dialog id="dlgPollen">
     <form method="dialog">
       <h3>Pollenflug</h3>
@@ -182,6 +201,9 @@
   <dialog id="dlgSettings">
     <form method="dialog">
       <h3>Einstellungen</h3>
+
+      <h4>Startseite</h4>
+      <button type="button" class="secondary" id="btnLayout"></button>
 
       <h4>Karte</h4>
       <label>Hintergrundkarte

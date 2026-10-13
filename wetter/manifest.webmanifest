@@ -2,7 +2,7 @@
   "id": "./",
   "name": "Wetter – DWD & Modelle",
   "short_name": "Wetter",
-  "description": "Aktuelles Wetter der DWD-Station, Warnungen, Textprognose, Verlauf bis 10 Tage, Radar, Satellit, Wind und Pollenflug",
+  "description": "Aktuelles Wetter der DWD-Station, Warnungen, Textprognose, Verlauf bis 10 Tage, Radar, Satellit, Wind, Luftqualität und Pollenflug",
   "start_url": "./",
   "scope": "./",
   "display": "standalone",
