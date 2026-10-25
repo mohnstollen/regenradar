@@ -13,6 +13,9 @@
   <link rel="manifest" href="manifest.webmanifest">
   <link rel="icon" type="image/png" href="icons/icon-192.png">
   <link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
+  <script>/* Darstellung vor dem ersten Zeichnen setzen (kein Aufblitzen) */
+    try { const t = JSON.parse(localStorage.getItem('wetterapp.settings.v3') || '{}').theme;
+      document.documentElement.dataset.theme = t === 'light' || t === 'dark' ? t : (matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light'); } catch { }</script>
   <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" crossorigin="">
   <link rel="stylesheet" href="style.css">
 </head>
@@ -148,6 +151,14 @@
   <dialog id="dlgLayout">
     <div>
       <h3 id="layoutTitle">Startseite einrichten</h3>
+      <div class="theme-pick" id="themePick" hidden>
+        <h4>Darstellung</h4>
+        <div class="seg" id="themeSeg" role="radiogroup" aria-label="Darstellung">
+          <button type="button" data-theme="light">Hell</button>
+          <button type="button" data-theme="dark">Dunkel</button>
+          <button type="button" data-theme="system">Wie System</button>
+        </div>
+      </div>
       <p class="small muted">Wähle, welche Abschnitte angezeigt werden. Zum Verschieben am Griff <span id="gripHint"></span> ziehen oder die Pfeile nutzen.</p>
       <ul id="layoutList" class="layout-list"></ul>
       <div class="row"><button type="button" class="secondary" id="btnLayoutReset">Standard</button></div>
@@ -209,6 +220,15 @@
       <h3>Einstellungen</h3>
       <h4>Startseite</h4>
       <button type="button" class="secondary" id="btnLayout"></button>
+
+      <h4>Darstellung</h4>
+      <label>Hell oder dunkel
+        <select id="setTheme">
+          <option value="system">wie System</option>
+          <option value="light">hell</option>
+          <option value="dark">dunkel</option>
+        </select>
+      </label>
 
       <h4>Karte</h4>
       <label>Hintergrundkarte

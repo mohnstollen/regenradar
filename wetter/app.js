@@ -11,8 +11,8 @@
  * Pollen:      DWD Pollenflug-Gefahrenindex, außerhalb DE Open-Meteo/CAMS
  */
 'use strict';
-const APP_VERSION = '3.4.0';
-const WIZARD_VERSION = '3.4';
+const APP_VERSION = '3.5.0';
+const WIZARD_VERSION = '3.5';
 
 // ---------- Endpunkte ----------
 const BS = 'https://api.brightsky.dev';
@@ -91,7 +91,7 @@ const DEFAULTS = {
   loc: null, station: null, favs: [], basemap: 'bm_grau', sat: 'auto', satDay: '', satNight: '', intervalMin: 10,
   notify: false, warnNotify: true, autoLocate: true, mapMode: 'radar', model: 'icon_d2', rangeH: 12,
   pollen: POLLEN.map(p => p.k), pollenRegion: 'auto', pollenHideZero: false,
-  showFeels: true, showDew: true, layout: null, layoutSeen: [], wizardFor: null
+  showFeels: true, showDew: true, layout: null, layoutSeen: [], wizardFor: null, theme: 'system'
 };
 let S = (() => {
   try { const s = Object.assign({}, DEFAULTS, JSON.parse(localStorage.getItem(LS) || '{}')); s.favs = Array.isArray(s.favs) ? s.favs : []; return s; }
@@ -100,7 +100,31 @@ let S = (() => {
 const isUpgrade = !!localStorage.getItem(LS) && S.wizardFor !== WIZARD_VERSION;
 if (!MODELS.some(m => m.key === S.model)) S.model = 'icon_d2';   // entfernte Modelle → Standard
 delete S.keys;
-const save = () => localStorage.setItem(LS, JSON.stringify(S));
+const save = () => { localStorage.setItem(LS, JSON.stringify(S)); syncNative(); };
+
+// ---------- Android-App (wetter-android) ----------
+// Aufrufe an die App laufen über prompt() – die App nimmt sie nur von der eigenen Herkunft an.
+const NATIVE = / WetterApp-Android\//.test(navigator.userAgent);
+const native = (cmd, ...args) => { try { return JSON.parse(prompt('wetterapp:' + JSON.stringify([cmd, ...args])) ?? 'null'); } catch { return null; } };
+// Standort und Schalter für die Hintergrundprüfung (Warnungen, Regen) der App
+function syncNative() {
+  if (NATIVE) native('sync', { lat: S.loc?.lat ?? null, lon: S.loc?.lon ?? null, name: S.loc?.name ?? '', notify: S.notify, warnNotify: S.warnNotify });
+}
+const notifyPermission = () => NATIVE ? native('permission') : ('Notification' in window ? Notification.permission : 'denied');
+function requestNotifyPermission() {
+  if (NATIVE) return new Promise(res => { window.__wetterPerm = res; native('requestPermission'); });
+  return 'Notification' in window ? Notification.requestPermission() : Promise.resolve('denied');
+}
+
+// ---------- Darstellung ----------
+const darkMq = matchMedia('(prefers-color-scheme: dark)');
+function applyTheme() {
+  const t = S.theme === 'light' || S.theme === 'dark' ? S.theme : (darkMq.matches ? 'dark' : 'light');
+  document.documentElement.dataset.theme = t;
+  document.querySelectorAll('#themeSeg button').forEach(b => { b.classList.toggle('active', b.dataset.theme === S.theme); b.setAttribute('aria-checked', String(b.dataset.theme === S.theme)); });
+  const sel = $('#setTheme'); if (sel) sel.value = S.theme;
+}
+darkMq.addEventListener?.('change', () => { if (S.theme === 'system') applyTheme(); });
 
 // ---------- Helpers ----------
 const $ = (s) => document.querySelector(s);
@@ -190,7 +214,8 @@ let layoutDraft = null, layoutWasOff = [], afterLayout = null;
 function openLayout(first = false) {
   layoutDraft = S.layout.map(l => ({ ...l }));
   layoutWasOff = S.layout.filter(l => !l.on).map(l => l.id);
-  $('#layoutTitle').textContent = first ? (isUpgrade ? `Neu in Version ${WIZARD_VERSION}: Startseite einrichten` : 'Willkommen! Startseite einrichten') : 'Startseite anpassen';
+  $('#layoutTitle').textContent = first ? (isUpgrade ? `Neu in Version ${WIZARD_VERSION}: Darstellung und Startseite` : 'Willkommen! Darstellung und Startseite einrichten') : 'Startseite anpassen';
+  $('#themePick').hidden = !first;
   $('#gripHint').innerHTML = I('grip');
   renderLayoutList();
   $('#dlgLayout').showModal();
@@ -1243,7 +1268,8 @@ async function rainNotify(title, body) {
 }
 async function notify(title, body, tag, kind) {
   const allowed = kind === 'rain' ? S.notify : kind === 'warn' ? S.warnNotify : true;
-  if (!allowed || !('Notification' in window) || Notification.permission !== 'granted') return false;
+  if (!allowed || notifyPermission() !== 'granted') return false;
+  if (NATIVE) return !!native('notify', tag, title, body);
   const o = { body, icon: 'icons/icon-192.png', badge: 'icons/badge-96.png', tag, renotify: true };
   try { const reg = await navigator.serviceWorker?.getRegistration(); if (reg) { await reg.showNotification(title, o); return true; } } catch { }
   try { new Notification(title, o); return true; } catch { return false; }
@@ -1341,7 +1367,7 @@ function initSettings() {
     if (el.type === 'checkbox') el.checked = S[key]; else el.value = String(S[key] ?? '');
     el.onchange = async () => {
       if (el.type === 'checkbox' && el.checked && (key === 'notify' || key === 'warnNotify')) {
-        if (!('Notification' in window) || await Notification.requestPermission() !== 'granted') { el.checked = false; toast('Benachrichtigungen nicht erlaubt.'); return; }
+        if (await requestNotifyPermission() !== 'granted') { el.checked = false; toast('Benachrichtigungen nicht erlaubt.'); return; }
       }
       S[key] = el.type === 'checkbox' ? el.checked : conv(el.value); save(); after?.();
     };
@@ -1353,10 +1379,12 @@ function initSettings() {
   bind('#setSatNight', 'satNight', v => v.trim(), satChanged);
   bind('#setInterval', 'intervalMin', Number, schedule);
   bind('#setNotify', 'notify'); bind('#setWarnNotify', 'warnNotify'); bind('#setAuto', 'autoLocate');
+  bind('#setTheme', 'theme', v => v, applyTheme);
+  document.querySelectorAll('#themeSeg button').forEach(b => b.onclick = () => { S.theme = b.dataset.theme; save(); applyTheme(); });
   $('#btnLayout').innerHTML = `${I('layout')} Abschnitte auswählen und sortieren`;
   $('#btnLayout').onclick = () => { $('#dlgSettings').close(); openLayout(false); };
   $('#btnTestNotify').onclick = async () => {
-    if ('Notification' in window && Notification.permission === 'default') await Notification.requestPermission();
+    if (notifyPermission() === 'default') await requestNotifyPermission();
     if (!(await notify('Test: Regen in ca. 20 min', 'So sieht ein Regenhinweis aus.', 'test', 'test'))) toast('Benachrichtigungen sind nicht erlaubt.');
   };
 }
@@ -1394,7 +1422,7 @@ function initPwa() {
 // ---------- Start ----------
 function init() {
   if (isUpgrade && !S.layoutSeen.length) S.layoutSeen = SECTIONS.map(x => x.id).filter(id => !NEW_IN_VERSION.includes(id));
-  S.layout = normLayout(); save(); applyLayout();
+  S.layout = normLayout(); save(); applyLayout(); applyTheme();
   $('#bkgYear').textContent = `(${YEAR})`;
   $('#appVersion').textContent = `Version ${APP_VERSION}`;
   $('#btnLocate').innerHTML = I('gps'); $('#btnSearch').innerHTML = I('search'); $('#btnRefresh').innerHTML = I('refresh');

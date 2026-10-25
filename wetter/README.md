@@ -1,4 +1,8 @@
-# Wetter-App (PWA) – Version 3.4.0
+# Wetter-App (PWA) – Version 3.5.0
+
+## Neu in 3.5
+- Darstellung hell, dunkel oder wie System (Einstellungen → Darstellung). Der Einrichtungsassistent fragt beim ersten Start danach.
+- Android-App (`../wetter-android`): native Benachrichtigungen und Hintergrundprüfung auf Warnungen und Regen
 
 ## Neu in 3.4
 - Entfernt: Luftqualität (UBA), alle Modelle außer DWD und ECMWF, Anbieter mit API-Key
