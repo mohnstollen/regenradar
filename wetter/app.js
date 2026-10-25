@@ -11,7 +11,7 @@
  * Pollen:      DWD Pollenflug-Gefahrenindex, außerhalb DE Open-Meteo/CAMS
  */
 'use strict';
-const APP_VERSION = '3.5.0';
+const APP_VERSION = '3.5.1';
 const WIZARD_VERSION = '3.5';
 
 // ---------- Endpunkte ----------
@@ -138,17 +138,19 @@ const esc = (s) => String(s ?? '').replace(/[&<>"]/g, c => ({ '&': '&amp;', '<':
 const WD = ['So', 'Mo', 'Di', 'Mi', 'Do', 'Fr', 'Sa'];
 const HOUR = 3600000, MIN = 60000;
 const dayStart = (t) => { const d = new Date(t); d.setHours(0, 0, 0, 0); return d.getTime(); };
+// Kalendertage addieren – nicht n * 24 h, sonst stimmt der Tag bei der Zeitumstellung (23-/25-Stunden-Tag) nicht
+const addDays = (t, n) => { const d = new Date(t); d.setDate(d.getDate() + n); return d.getTime(); };
 const isoZ = (t) => new Date(t).toISOString().replace(/\.\d{3}Z$/, 'Z');
 function distKm(a, b, c, d) { const x = rad(c - a), y = rad(d - b); const h = Math.sin(x / 2) ** 2 + Math.cos(rad(a)) * Math.cos(rad(c)) * Math.sin(y / 2) ** 2; return 12742 * Math.asin(Math.sqrt(h)); }
 function whenTxt(ms) {
   const d = new Date(ms), today = dayStart(Date.now());
-  const day = dayStart(ms) === today ? 'heute ' : dayStart(ms) === today - 24 * HOUR ? 'gestern ' : `${WD[d.getDay()]} `;
+  const day = dayStart(ms) === today ? 'heute ' : dayStart(ms) === addDays(today, -1) ? 'gestern ' : `${WD[d.getDay()]} `;
   return `${day}${hhmm(ms)} Uhr`;
 }
 function hourTxt(ms) {
   const today = dayStart(Date.now()), d = dayStart(ms), h = new Date(ms).getHours();
   if (d === today) return `${h} Uhr`;
-  if (d === today + 24 * HOUR) return h < 6 ? `${h} Uhr in der Nacht` : `morgen ${h} Uhr`;
+  if (d === addDays(today, 1)) return h < 6 ? `${h} Uhr in der Nacht` : `morgen ${h} Uhr`;
   return `${WD[new Date(ms).getDay()]} ${h} Uhr`;
 }
 const avg = (a) => a.length ? a.reduce((x, y) => x + y, 0) / a.length : null;
@@ -385,7 +387,7 @@ let mosmixCache = null;
 async function getMosmix(lat, lon) {
   const key = `${lat.toFixed(3)},${lon.toFixed(3)}`;
   if (mosmixCache && mosmixCache.key === key && Date.now() - mosmixCache.ts < 15 * MIN) return mosmixCache;
-  const from = new Date(dayStart(Date.now())), to = new Date(from.getTime() + 11 * 24 * HOUR);
+  const from = new Date(dayStart(Date.now())), to = new Date(addDays(from.getTime(), 11));
   const { data: d, at } = await fetchJSON(`${BS}/weather?lat=${lat.toFixed(4)}&lon=${lon.toFixed(4)}&date=${from.toISOString()}&last_date=${to.toISOString()}&tz=Europe/Berlin`);
   const rows = (d.weather || []).map(w => {
     const t = new Date(w.timestamp).getTime();
@@ -507,7 +509,7 @@ function drawChart(rows, t0, t1, model, probSrc) {
       svg += `<line class="grid" x1="${x(t)}" x2="${x(t)}" y1="${TOP}" y2="${TOP + TH}"/><text class="xlbl" x="${anchor === 'start' ? x(t) - 4 : x(t)}" y="${XL}" style="text-anchor:${anchor}">${t === t0 ? 'jetzt' : new Date(t).getHours() + ' Uhr'}</text>`;
     }
   } else {
-    for (let t = dayStart(t0) + 24 * HOUR; t < t1; t += 24 * HOUR) svg += `<line class="daysep" x1="${x(t)}" x2="${x(t)}" y1="${TOP}" y2="${XD + 4}"/>`;
+    for (let t = addDays(dayStart(t0), 1); t < t1; t = addDays(t, 1)) svg += `<line class="daysep" x1="${x(t)}" x2="${x(t)}" y1="${TOP}" y2="${XD + 4}"/>`;
     if (hourStep) {
       svg += `<text class="rowlbl" x="${PADL - 5}" y="${XL}" text-anchor="end">Uhr</text>`;
       for (let t = Math.ceil(t0 / HOUR) * HOUR; t <= t1; t += HOUR) {
@@ -517,12 +519,12 @@ function drawChart(rows, t0, t1, model, probSrc) {
         svg += `<line class="grid" x1="${x(t)}" x2="${x(t)}" y1="${TOP}" y2="${TOP + TH}"/><text class="xlbl" x="${x(t)}" y="${XL}">${hr}</text>`;
       }
     }
-    for (let t = dayStart(t0); t < t1; t += 24 * HOUR) {
-      const a = Math.max(t, t0), b = Math.min(t + 24 * HOUR, t1), span = x(b) - x(a);
+    for (let t = dayStart(t0); t < t1; t = addDays(t, 1)) {
+      const a = Math.max(t, t0), b = Math.min(addDays(t, 1), t1), span = x(b) - x(a);
       if (span < 14) continue;
       const d = new Date(t), today = dayStart(Date.now());
-      const name = t === today ? 'Heute' : t === today + 24 * HOUR ? 'Morgen' : WD[d.getDay()];
-      const txt = span >= 70 ? `${name} ${t > today + 24 * HOUR ? d.getDate() + '.' : ''}`.trim() : span >= 44 ? name : WD[d.getDay()];
+      const name = t === today ? 'Heute' : t === addDays(today, 1) ? 'Morgen' : WD[d.getDay()];
+      const txt = span >= 70 ? `${name} ${t > addDays(today, 1) ? d.getDate() + '.' : ''}`.trim() : span >= 44 ? name : WD[d.getDay()];
       svg += `<text class="xlbl day" x="${(x(a) + x(b)) / 2}" y="${XD}">${txt}</text>`;
     }
   }
@@ -558,7 +560,7 @@ function drawChart(rows, t0, t1, model, probSrc) {
   // Zeitblöcke
   const B = H <= 12 ? (pph >= 22 ? 1 : 2) : [3, 6, 12, 24].find(b => b * pph >= 22) || 24;
   const buckets = [];
-  if (B === 24) { for (let t = dayStart(t0); t < t1; t += 24 * HOUR) buckets.push([Math.max(t, t0), Math.min(t + 24 * HOUR, t1)]); }
+  if (B === 24) { for (let t = dayStart(t0); t < t1; t = addDays(t, 1)) buckets.push([Math.max(t, t0), Math.min(addDays(t, 1), t1)]); }
   else {
     let t = t0; const h0 = new Date(t0).getHours(), first = (B - (h0 % B)) % B;
     if (first) { buckets.push([t0, t0 + first * HOUR]); t = t0 + first * HOUR; }
@@ -664,7 +666,7 @@ async function loadDays(lat, lon) {
   const gmin = Math.min(...days.map(d => d.tmin)), gmax = Math.max(...days.map(d => d.tmax)), span = Math.max(1, gmax - gmin);
   const box = $('#daysList'); box.className = 'days';
   box.innerHTML = days.map(x => {
-    const dt = new Date(x.d), name = x.d === today ? 'Heute' : x.d === today + 24 * HOUR ? 'Morgen' : WD[dt.getDay()];
+    const dt = new Date(x.d), name = x.d === today ? 'Heute' : x.d === addDays(today, 1) ? 'Morgen' : WD[dt.getDay()];
     const rain = x.mm >= 0.1 ? `<b>${fmt(x.mm, x.mm >= 10 ? 0 : 1)} mm</b>` : 'trocken';
     const extra = [x.prob != null && x.prob >= 10 ? `${fmt(x.prob, 0)} %` : '', x.sun != null ? `${fmt(x.sun / 60, 1)} h Sonne` : '', x.gust >= 50 ? `Böen ${fmt(x.gust, 0)}` : ''].filter(Boolean).join(' · ');
     const l = (x.tmin - gmin) / span * 100, w = Math.max(4, (x.tmax - x.tmin) / span * 100);
@@ -705,7 +707,7 @@ async function loadDayText(lat, lon) {
 }
 function buildDayText(rows, now) {
   const tomorrow = new Date(now).getHours() >= 20;
-  const base = dayStart(now) + (tomorrow ? 24 * HOUR : 0);
+  const base = addDays(dayStart(now), tomorrow ? 1 : 0);
   const word = tomorrow ? 'Morgen' : 'Heute';
   const PER = [{ k: 'V', a: 6, b: 12 }, { k: 'N', a: 12, b: 18 }, { k: 'A', a: 18, b: 24 }];
   const periods = [];
@@ -762,7 +764,7 @@ function buildDayText(rows, now) {
   const dayP = periods.filter(p => p.k !== 'A');
   if (dayP.length) text += ` Höchstwert ${fmt(Math.max(...dayP.map(p => p.tmax)), 0)} °C`;
   else text += ` Temperaturen um ${fmt((l.tmax + l.tmin) / 2, 0)} °C`;
-  const night = rows.filter(r => r.t > base + 24 * HOUR && r.t <= base + 31 * HOUR);
+  const night = rows.filter(r => r.t > addDays(base, 1) && r.t <= addDays(base, 1) + 7 * HOUR);
   if (night.length >= 3) text += `, in der Nacht ${fmt(Math.min(...night.map(r => r.temp)), 0)} °C`;
   text += '.';
   const wetP = periods.filter(p => p.wet).sort((a, b) => b.mm - a.mm)[0];
@@ -864,7 +866,7 @@ async function getDwdPollen() {
   dwdPollen = { ts: Date.now(), at, data }; return dwdPollen;
 }
 const parseDwdTime = (s) => { const m = String(s || '').match(/(\d{4})-(\d{2})-(\d{2})\s+(\d{1,2}):(\d{2})/); return m ? new Date(+m[1], m[2] - 1, +m[3], +m[4], +m[5]).getTime() : null; };
-const dayLabel = (t) => { const today = dayStart(Date.now()); return t === today ? 'Heute' : t === today + 24 * HOUR ? 'Morgen' : `${WD[new Date(t).getDay()]} ${new Date(t).getDate()}.`; };
+const dayLabel = (t) => { const today = dayStart(Date.now()); return t === today ? 'Heute' : t === addDays(today, 1) ? 'Morgen' : `${WD[new Date(t).getDay()]} ${new Date(t).getDate()}.`; };
 async function loadPollen(lat, lon) {
   const sel = POLLEN.filter(p => S.pollen.includes(p.k));
   if (!sel.length) { renderPollen(null, [], 'Keine Pollenart gewählt – über „Pollenarten wählen“ festlegen.'); return; }
@@ -877,7 +879,7 @@ async function loadPollen(lat, lon) {
       const upd = parseDwdTime(data.last_update);
       const shift = upd ? Math.max(0, Math.round((dayStart(Date.now()) - dayStart(upd)) / 86400000)) : 0;
       const keys = ['today', 'tomorrow', 'dayafter_to'].slice(shift);
-      const days = keys.map((_, i) => dayLabel(dayStart(Date.now()) + i * 24 * HOUR));
+      const days = keys.map((_, i) => dayLabel(addDays(dayStart(Date.now()), i)));
       const rows = sel.map(p => ({ name: p.name, vals: keys.map(k => PSTEP[entry.Pollen?.[p.k]?.[k]] ?? null) }));
       renderPollen(days, rows, `DWD Pollenflug-Gefahrenindex · Gebiet ${reg[1]}${S.pollenRegion === 'auto' ? ' (automatisch)' : ''} · Stand ${upd ? whenTxt(upd) : data.last_update}`);
       return;
@@ -888,7 +890,7 @@ async function loadPollen(lat, lon) {
   const { data: d, at } = await fetchJSON(`${OM_AQ}?${q}`);
   const h = d.hourly || {}, t = (h.time || []).map(x => x * 1000);
   const base = dayStart(Date.now());
-  const days = [0, 1, 2].map(i => dayLabel(base + i * 24 * HOUR));
+  const days = [0, 1, 2].map(i => dayLabel(addDays(base, i)));
   const level = (k, v) => {
     if (v == null) return null;
     const th = k === 'grass_pollen' ? [1, 5, 15, 30, 50, 100] : k === 'ragweed_pollen' || k === 'mugwort_pollen' ? [1, 3, 6, 10, 20, 40] : [1, 10, 30, 50, 100, 200];
@@ -896,7 +898,7 @@ async function loadPollen(lat, lon) {
   };
   const rows = sel.map(p => ({ name: p.name, vals: [0, 1, 2].map(i => {
     if (!p.om) return null;
-    const vs = t.map((x, j) => x >= base + i * 24 * HOUR && x < base + (i + 1) * 24 * HOUR ? h[p.om]?.[j] : null).filter(v => v != null);
+    const vs = t.map((x, j) => x >= addDays(base, i) && x < addDays(base, i + 1) ? h[p.om]?.[j] : null).filter(v => v != null);
     return vs.length ? level(p.om, Math.max(...vs)) : null;
   }) }));
   renderPollen(days, rows, `Open-Meteo / CAMS (Modell, 11 km) · Stufen aus Pollenkonzentration abgeleitet · Datenstand ${whenTxt(at)}${isGermany() ? ' · DWD-Daten derzeit nicht abrufbar' : ''}`);

@@ -1,4 +1,9 @@
-# Wetter-App (PWA) – Version 3.5.0
+# Wetter-App (PWA) – Version 3.5.1
+
+## Neu in 3.5.1
+- Behoben: Am Tag der Zeitumstellung (23 bzw. 25 Stunden) waren Tagesnamen und Tagestrennlinien im Diagramm
+  um einen Tag bzw. eine Stunde verschoben, z. B. „Morgen“ und danach nochmals „Mo“. Dasselbe galt für
+  „Morgen“ in der 10-Tage-Übersicht und für die Tage beim Pollenflug.
 
 ## Neu in 3.5
 - Darstellung hell, dunkel oder wie System (Einstellungen → Darstellung). Der Einrichtungsassistent fragt beim ersten Start danach.
