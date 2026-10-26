@@ -134,7 +134,11 @@ public class MainActivity extends Activity {
                     .putBoolean("notify", o.optBoolean("notify"))
                     .putBoolean("warnNotify", o.optBoolean("warnNotify"))
                     .putString("name", o.optString("name", ""))
-                    .putString("theme", o.optString("theme", "system"));
+                    .putString("theme", o.optString("theme", "system"))
+                    .putInt("rainRadius", o.optInt("rainRadius", 10))
+                    .putString("rainMin", o.optString("rainMin", "all"))
+                    .putBoolean("stormNotify", o.optBoolean("stormNotify"))
+                    .putInt("stormRadius", o.optInt("stormRadius", 50));
                 boolean moved;
                 if (o.isNull("lat") || o.isNull("lon")) { e.remove("lat").remove("lon"); moved = false; }
                 else {

@@ -248,7 +248,35 @@
 
       <h4>Benachrichtigungen</h4>
       <label class="check"><input type="checkbox" id="setNotify"> Wenn Regen naht (DWD-Radarvorhersage)</label>
-      <label class="check"><input type="checkbox" id="setWarnNotify"> Bei neuen DWD-Warnungen</label>
+      <div class="subopts" id="rainOpts" hidden>
+        <label>Regen im Umkreis von
+          <select id="setRainRadius">
+            <option value="5">5 km</option>
+            <option value="10">10 km</option>
+            <option value="25">25 km</option>
+            <option value="50">50 km</option>
+          </select>
+        </label>
+        <label>Melden bei
+          <select id="setRainMin">
+            <option value="all">jedem Regen</option>
+            <option value="moderate">mäßigem und starkem Regen</option>
+            <option value="heavy">nur starkem Regen</option>
+          </select>
+        </label>
+        <p class="small muted">Nur Regen, der Dich laut Vorhersage erreicht – mit Richtung und Ankunftszeit, aktualisiert bei 30 und 10 Minuten. Mäßig ab 2,5 mm/h, stark ab 10 mm/h.</p>
+      </div>
+      <label class="check"><input type="checkbox" id="setWarnNotify"> Bei neuen DWD-Warnungen für meinen Ort</label>
+      <label class="check" id="stormRow" hidden><input type="checkbox" id="setStormNotify"> Bei Unwettern (rot/violett) im Umkreis, mit Meldung der Aufhebung</label>
+      <div class="subopts" id="stormOpts" hidden>
+        <label>Unwetter im Umkreis von
+          <select id="setStormRadius">
+            <option value="25">25 km</option>
+            <option value="50">50 km</option>
+            <option value="100">100 km</option>
+          </select>
+        </label>
+      </div>
       <p class="small muted" id="notifyHint" hidden>Die App prüft auch im Hintergrund etwa alle 15 Minuten, wenn sie geschlossen ist.</p>
       <button type="button" id="btnTestNotify" class="secondary">Test-Benachrichtigung</button>
 

@@ -11,7 +11,7 @@
  * Pollen:      DWD Pollenflug-Gefahrenindex, außerhalb DE Open-Meteo/CAMS
  */
 'use strict';
-const APP_VERSION = '3.9.0';
+const APP_VERSION = '3.10.0';
 const WIZARD_VERSION = '3.5';
 
 // ---------- Endpunkte ----------
@@ -91,7 +91,8 @@ const DEFAULTS = {
   loc: null, station: null, favs: [], basemap: 'bm_grau', sat: 'auto', satDay: '', satNight: '', intervalMin: 10,
   notify: false, warnNotify: true, autoLocate: true, mapMode: 'radar', model: 'icon_d2', rangeH: 12,
   pollen: POLLEN.map(p => p.k), pollenRegion: 'auto', pollenHideZero: false,
-  showFeels: true, showDew: true, layout: null, layoutSeen: [], wizardFor: null, theme: 'system', scene: true, glass: 84
+  showFeels: true, showDew: true, layout: null, layoutSeen: [], wizardFor: null, theme: 'system', scene: true, glass: 84,
+  rainRadius: 10, rainMin: 'all', stormNotify: false, stormRadius: 50
 };
 let S = (() => {
   try { const s = Object.assign({}, DEFAULTS, JSON.parse(localStorage.getItem(LS) || '{}')); s.favs = Array.isArray(s.favs) ? s.favs : []; return s; }
@@ -108,7 +109,8 @@ const NATIVE = / WetterApp-Android\//.test(navigator.userAgent);
 const native = (cmd, ...args) => { try { return JSON.parse(prompt('wetterapp:' + JSON.stringify([cmd, ...args])) ?? 'null'); } catch { return null; } };
 // Standort und Schalter für die Hintergrundprüfung (Warnungen, Regen) der App
 function syncNative() {
-  if (NATIVE) native('sync', { lat: S.loc?.lat ?? null, lon: S.loc?.lon ?? null, name: S.loc?.name ?? '', notify: S.notify, warnNotify: S.warnNotify, theme: S.theme });
+  if (NATIVE) native('sync', { lat: S.loc?.lat ?? null, lon: S.loc?.lon ?? null, name: S.loc?.name ?? '', notify: S.notify, warnNotify: S.warnNotify, theme: S.theme,
+    rainRadius: S.rainRadius, rainMin: S.rainMin, stormNotify: S.stormNotify, stormRadius: S.stormRadius });
 }
 const notifyPermission = () => NATIVE ? native('permission') : ('Notification' in window ? Notification.permission : 'denied');
 function requestNotifyPermission() {
@@ -1400,6 +1402,7 @@ function renderNowcast(r) {
   $('#ncInfo').textContent = (total >= 0.05 ? `Summe in 2 h ca. ${fmt(total)} mm` : 'Kein nennenswerter Niederschlag am Standort erwartet') + ` · DWD-Radar mit Vorhersage, Bild ${hhmm(r.t)} Uhr`;
 }
 async function rainNotify(title, body) {
+  if (NATIVE) return;   // die Android-App meldet Regen selbst (Umkreis, Stärke, Richtung) – auch im Hintergrund
   const last = Number(localStorage.getItem(LS_RAIN) || 0);
   if (Date.now() - last < 60 * MIN) return;
   if (await notify(title, body, 'rain', 'rain')) localStorage.setItem(LS_RAIN, String(Date.now()));
@@ -1505,7 +1508,7 @@ function initSettings() {
     const el = $(sel);
     if (el.type === 'checkbox') el.checked = S[key]; else el.value = String(S[key] ?? '');
     el.onchange = async () => {
-      if (el.type === 'checkbox' && el.checked && (key === 'notify' || key === 'warnNotify')) {
+      if (el.type === 'checkbox' && el.checked && (key === 'notify' || key === 'warnNotify' || key === 'stormNotify')) {
         if (await requestNotifyPermission() !== 'granted') { el.checked = false; toast('Benachrichtigungen nicht erlaubt.'); return; }
       }
       S[key] = el.type === 'checkbox' ? el.checked : conv(el.value); save(); after?.();
@@ -1517,7 +1520,10 @@ function initSettings() {
   bind('#setSatDay', 'satDay', v => v.trim(), satChanged);
   bind('#setSatNight', 'satNight', v => v.trim(), satChanged);
   bind('#setInterval', 'intervalMin', Number, schedule);
-  bind('#setNotify', 'notify'); bind('#setWarnNotify', 'warnNotify'); bind('#setAuto', 'autoLocate');
+  bind('#setNotify', 'notify', v => v, syncNotifyRows); bind('#setWarnNotify', 'warnNotify'); bind('#setAuto', 'autoLocate');
+  bind('#setRainRadius', 'rainRadius', Number); bind('#setRainMin', 'rainMin');
+  bind('#setStormNotify', 'stormNotify', v => v, syncNotifyRows); bind('#setStormRadius', 'stormRadius', Number);
+  syncNotifyRows();
   bind('#setTheme', 'theme', v => v, applyTheme);
   bind('#setScene', 'scene', v => v, renderScene);
   bind('#setGlass', 'glass', Number, applyGlass);
@@ -1529,6 +1535,13 @@ function initSettings() {
     if (notifyPermission() === 'default') await requestNotifyPermission();
     if (!(await notify('Test: Regen in ca. 20 min', 'So sieht ein Regenhinweis aus.', 'test', 'test'))) toast('Benachrichtigungen sind nicht erlaubt.');
   };
+}
+
+// Zusatzoptionen der Benachrichtigungen gibt es nur in der Android-App (Hintergrundprüfung)
+function syncNotifyRows() {
+  $('#rainOpts').hidden = !NATIVE || !S.notify;
+  $('#stormRow').hidden = !NATIVE;
+  $('#stormOpts').hidden = !NATIVE || !S.stormNotify;
 }
 
 // ---------- PWA ----------

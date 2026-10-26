@@ -4,7 +4,7 @@
  *   x-sw-time  = Zeitpunkt des ursprünglichen Abrufs, x-sw-cache = Antwort aus dem Offline-Speicher
  * Karten, Radar, Satellit, Windy: nur Netz
  */
-const VERSION = 'wetter-v3.9.0';
+const VERSION = 'wetter-v3.10.0';
 const SHELL = ['./', './index.html', './style.css', './app.js', './icons.js', './scene.js', './manifest.webmanifest',
   'https://unpkg.com/leaflet@1.9.4/dist/leaflet.js', 'https://unpkg.com/leaflet@1.9.4/dist/leaflet.css',
   'https://unpkg.com/leaflet@1.9.4/dist/images/marker-icon.png', 'https://unpkg.com/leaflet@1.9.4/dist/images/marker-icon-2x.png',
