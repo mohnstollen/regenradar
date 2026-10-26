@@ -1,13 +1,11 @@
 #!/usr/bin/env bash
 # Baut aus der PWA in ../wetter eine signierte APK – ohne Gradle, nur mit den Android-Build-Tools.
-#   Ubuntu/Debian: apt install android-sdk-platform-23 android-sdk-build-tools dalvik-exchange apksigner zipalign
-#   Zum Kompilieren gegen die API 34 wird einmalig Robolectrics android-all (Maven Central, ~140 MB) geladen.
+#   Ubuntu/Debian: apt install android-sdk-build-tools dalvik-exchange apksigner zipalign
+#   Als Android-API 34 (Ressourcen und Java) dient Robolectrics android-all – wird einmalig von Maven Central geladen (~140 MB).
 #   Signierschlüssel: $KEYSTORE (Standard ~/.android/wetter.jks, wird bei Bedarf erzeugt), Passwort $KEYSTORE_PASS
 set -euo pipefail
 cd "$(dirname "$0")"
 
-SDK=${ANDROID_SDK:-/usr/lib/android-sdk}
-ANDROID_JAR=${ANDROID_JAR:-$SDK/platforms/android-23/android.jar}
 ANDROID_ALL_VERSION=14-robolectric-10818077
 ANDROID_ALL_SHA1=94b1490a891e9be559aa35c87cd8a0c163f32d83
 ANDROID_ALL=${ANDROID_ALL:-$HOME/.cache/wetter-android/android-all-$ANDROID_ALL_VERSION.jar}
@@ -40,7 +38,7 @@ cp "$WEB/icons/icon-192.png" "$OUT/res/mipmap-xxxhdpi/ic_launcher.png"
 
 # Ressourcen
 aapt2 compile --dir "$OUT/res" -o "$OUT/res.zip"
-aapt2 link -I "$ANDROID_JAR" --manifest AndroidManifest.xml --version-code "$VERSION_CODE" --version-name "$VERSION" \
+aapt2 link -I "$ANDROID_ALL" --manifest AndroidManifest.xml --version-code "$VERSION_CODE" --version-name "$VERSION" \
   -A "$OUT/assets" --java "$OUT/gen" -o "$OUT/unsigned.apk" "$OUT/res.zip"
 
 # Java -> Dex (android-all nur zum Kompilieren, nicht in der APK)

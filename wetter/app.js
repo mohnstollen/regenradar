@@ -11,7 +11,7 @@
  * Pollen:      DWD Pollenflug-Gefahrenindex, außerhalb DE Open-Meteo/CAMS
  */
 'use strict';
-const APP_VERSION = '3.7.0';
+const APP_VERSION = '3.8.0';
 const WIZARD_VERSION = '3.5';
 
 // ---------- Endpunkte ----------
@@ -108,7 +108,7 @@ const NATIVE = / WetterApp-Android\//.test(navigator.userAgent);
 const native = (cmd, ...args) => { try { return JSON.parse(prompt('wetterapp:' + JSON.stringify([cmd, ...args])) ?? 'null'); } catch { return null; } };
 // Standort und Schalter für die Hintergrundprüfung (Warnungen, Regen) der App
 function syncNative() {
-  if (NATIVE) native('sync', { lat: S.loc?.lat ?? null, lon: S.loc?.lon ?? null, name: S.loc?.name ?? '', notify: S.notify, warnNotify: S.warnNotify });
+  if (NATIVE) native('sync', { lat: S.loc?.lat ?? null, lon: S.loc?.lon ?? null, name: S.loc?.name ?? '', notify: S.notify, warnNotify: S.warnNotify, theme: S.theme });
 }
 const notifyPermission = () => NATIVE ? native('permission') : ('Notification' in window ? Notification.permission : 'denied');
 function requestNotifyPermission() {
