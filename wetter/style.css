@@ -3,8 +3,8 @@
   --primary: #0b5cab; --temp: #e8590c; --feels: #f08c00; --dew: #12b886; --rain: #3d8bfd; --sun: #f2b705; --radius: 14px;
 }
 /* Hell/Dunkel: data-theme setzt app.js (Einstellung „Darstellung“, bei „Wie System“ nach prefers-color-scheme) */
-:root { color-scheme: light; }
-:root[data-theme=dark] { color-scheme: dark; --bg: #0f151c; --card: #18212b; --text: #e6edf3; --muted: #93a1b0; --line: #2a3542; --line2: #3a4655; }
+:root { color-scheme: light; --glass: rgba(255,255,255,.84); }
+:root[data-theme=dark] { color-scheme: dark; --glass: rgba(24,33,43,.84); --bg: #0f151c; --card: #18212b; --text: #e6edf3; --muted: #93a1b0; --line: #2a3542; --line2: #3a4655; }
 * { box-sizing: border-box; }
 html, body { margin: 0; }
 body { font-family: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif; background: var(--bg); color: var(--text); }
@@ -179,6 +179,28 @@ a { color: var(--primary); }
 #pollenInfo, #daysInfo, #ncInfo { margin-top: .5rem; }
 
 .foot { padding: 0 .3rem 1.2rem; line-height: 1.5; }
+
+/* Hintergrundszene (scene.js): fest hinter dem Inhalt, Karten leicht durchscheinend */
+#scene { position: fixed; inset: 0; z-index: 0; pointer-events: none; overflow: hidden; }
+#scene > div { position: absolute; inset: 0; opacity: 0; transition: opacity 1.2s ease; }
+#scene svg { display: block; width: 100%; height: 100%; }
+body.scene { background: #1d3263; }
+body.scene .content { position: relative; z-index: 1; padding-bottom: 40vh; }
+body.scene .card { background: var(--glass); -webkit-backdrop-filter: blur(10px); backdrop-filter: blur(10px); box-shadow: 0 2px 12px rgba(0,0,0,.18); }
+body.scene .topbar { background: rgba(11,92,171,.86); -webkit-backdrop-filter: blur(10px); backdrop-filter: blur(10px); }
+body.scene .foot { background: var(--glass); -webkit-backdrop-filter: blur(10px); backdrop-filter: blur(10px); border-radius: var(--radius); padding: .4rem .9rem .6rem; }
+.sc-cloud { animation: sc-drift var(--d) ease-in-out infinite alternate; }
+.sc-fog { animation: sc-drift var(--d) ease-in-out infinite alternate; --dx: 140px; }
+@keyframes sc-drift { to { transform: translateX(var(--dx)); } }
+.sc-fall { animation: sc-fall var(--d) linear infinite; }
+@keyframes sc-fall { from { transform: translateY(0); } to { transform: translateY(1600px); } }
+.sc-sway { animation: sc-sway 5s ease-in-out infinite alternate; }
+@keyframes sc-sway { from { transform: translateX(-30px); } to { transform: translateX(30px); } }
+.sc-leaf { animation: sc-leaf var(--d) linear var(--delay) infinite; }
+@keyframes sc-leaf { from { transform: translate(var(--x), -40px) rotate(0); } to { transform: translate(calc(var(--x) + var(--dx)), 1640px) rotate(900deg); } }
+.sc-flash { opacity: 0; animation: sc-flash 9s linear infinite; }
+@keyframes sc-flash { 0%, 88%, 100% { opacity: 0; } 88.6% { opacity: 1; } 89.4% { opacity: .1; } 90.4% { opacity: .85; } 92% { opacity: 0; } }
+@media (prefers-reduced-motion: reduce) { #scene * { animation: none !important; } .sc-leaf { display: none; } }
 .foot summary { cursor: pointer; padding: .3rem 0; }
 .foot p { margin: .3rem 0 0; }
 

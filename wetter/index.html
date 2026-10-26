@@ -20,6 +20,7 @@
   <link rel="stylesheet" href="style.css">
 </head>
 <body>
+  <div id="scene" aria-hidden="true"></div>
   <header class="topbar">
     <button class="loc" id="btnPlaces" type="button" title="Orte und Favoriten">
       <span class="loc-name"><span id="locName">Kein Standort</span><span id="locChevron"></span></span>
@@ -229,6 +230,7 @@
           <option value="dark">dunkel</option>
         </select>
       </label>
+      <label class="check"><input type="checkbox" id="setScene"> Hintergrundbild passend zu Jahreszeit, Tageszeit und Wetter</label>
 
       <h4>Karte</h4>
       <label>Hintergrundkarte
@@ -279,6 +281,7 @@
 
   <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" crossorigin=""></script>
   <script src="icons.js"></script>
+  <script src="scene.js"></script>
   <script src="app.js"></script>
 </body>
 </html>

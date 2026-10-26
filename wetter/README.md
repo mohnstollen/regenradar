@@ -1,4 +1,16 @@
-# Wetter-App (PWA) – Version 3.5.1
+# Wetter-App (PWA) – Version 3.6.0
+
+## Neu in 3.6
+- Hintergrundbild: eine gezeichnete Landschaft (`scene.js`, reines SVG, keine Bilddateien) passend zu
+  - Jahreszeit: Frühling mit Blüten und Wiesenblumen, Sommer mit Kornfeld, Herbst mit buntem Laubwald und fallenden
+    Blättern, Winter mit kahlen Bäumen. Schnee liegt nur, wenn es gerade schneit.
+  - Tageszeit nach Sonnenauf- und -untergang am Ort: Morgenrot, Tag, Abendrot, Nacht mit Mond und Sternen
+  - Wetter laut DWD-Station: klar, heiter, bewölkt, Nebel, Regen, Schnee, Gewitter mit Blitzen, Wind, Hitze ab 27 °C.
+    Zeigt das Radar Regen am Standort, regnet es auch im Bild.
+- Die Karten werden dabei leicht durchscheinend. Abschaltbar unter Einstellungen → Darstellung.
+- Vorschau aller Szenen über die Adresse, z. B. `?szene=herbst,tag,klar`, `?szene=winter,nacht,schnee,wind` oder
+  `?szene=sommer,abend,heiss`. Mögliche Wörter: frühling/sommer/herbst/winter, morgen/tag/abend/nacht,
+  klar/heiter/bewölkt/nebel, regen/schneeregen/schnee/hagel, gewitter/heiß/wind/schneedecke/frost
 
 ## Neu in 3.5.1
 - Behoben: Am Tag der Zeitumstellung (23 bzw. 25 Stunden) waren Tagesnamen und Tagestrennlinien im Diagramm

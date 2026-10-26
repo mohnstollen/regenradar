@@ -11,7 +11,7 @@
  * Pollen:      DWD Pollenflug-Gefahrenindex, außerhalb DE Open-Meteo/CAMS
  */
 'use strict';
-const APP_VERSION = '3.5.1';
+const APP_VERSION = '3.6.0';
 const WIZARD_VERSION = '3.5';
 
 // ---------- Endpunkte ----------
@@ -91,7 +91,7 @@ const DEFAULTS = {
   loc: null, station: null, favs: [], basemap: 'bm_grau', sat: 'auto', satDay: '', satNight: '', intervalMin: 10,
   notify: false, warnNotify: true, autoLocate: true, mapMode: 'radar', model: 'icon_d2', rangeH: 12,
   pollen: POLLEN.map(p => p.k), pollenRegion: 'auto', pollenHideZero: false,
-  showFeels: true, showDew: true, layout: null, layoutSeen: [], wizardFor: null, theme: 'system'
+  showFeels: true, showDew: true, layout: null, layoutSeen: [], wizardFor: null, theme: 'system', scene: true
 };
 let S = (() => {
   try { const s = Object.assign({}, DEFAULTS, JSON.parse(localStorage.getItem(LS) || '{}')); s.favs = Array.isArray(s.favs) ? s.favs : []; return s; }
@@ -308,6 +308,64 @@ function renderSun() {
     + `<span class="muted" title="Tageslänge">${I('daylen')}${Math.floor(len / 60)} h ${String(len % 60).padStart(2, '0')} min${label}</span>`;
 }
 
+// ---------- Hintergrundszene (scene.js) ----------
+let sceneWx = null, sceneRainNow = false, sceneKey = '';
+const SEASON_OF_MONTH = ['winter', 'winter', 'spring', 'spring', 'spring', 'summer', 'summer', 'summer', 'autumn', 'autumn', 'autumn', 'winter'];
+const PRECIP_OF = { rain: 'rain', sleet: 'sleet', snow: 'snow', hail: 'hail', thunderstorm: 'rain' };
+// Vorschau über die Adresse, z. B. ?szene=herbst,tag,klar oder ?szene=winter,nacht,schnee,wind
+const SCENE_WORDS = {
+  season: { fruehling: 'spring', frühling: 'spring', sommer: 'summer', herbst: 'autumn', winter: 'winter' },
+  phase: { morgen: 'dawn', tag: 'day', abend: 'dusk', nacht: 'night' },
+  sky: { klar: 'clear', heiter: 'partly', bewoelkt: 'cloudy', bewölkt: 'cloudy', nebel: 'fog' },
+  precip: { regen: 'rain', schneeregen: 'sleet', schnee: 'snow', hagel: 'hail' },
+  flag: { gewitter: 'storm', heiss: 'hot', heiß: 'hot', wind: 'windy', schneedecke: 'snowCover', frost: 'frost' }
+};
+function scenePreview() {
+  const q = new URLSearchParams(location.search).get('szene'); if (!q) return null;
+  const st = { season: 'summer', phase: 'day', sky: 'clear', precip: null, storm: false, hot: false, windy: false, snowCover: false, frost: false };
+  for (const w of q.toLowerCase().split(',').map(x => x.trim())) {
+    for (const k of ['season', 'phase', 'sky', 'precip']) if (SCENE_WORDS[k][w]) st[k] = SCENE_WORDS[k][w];
+    if (SCENE_WORDS.flag[w]) st[SCENE_WORDS.flag[w]] = true;
+  }
+  if (st.precip === 'snow') st.snowCover = true;
+  if (st.precip && st.sky === 'clear') st.sky = 'cloudy';
+  return st;
+}
+function sceneState() {
+  const now = Date.now(), season = SEASON_OF_MONTH[new Date(now).getMonth()];
+  let phase;
+  if (S.loc) {
+    const st = sunTimes(now, S.loc.lat, S.loc.lon), D = 40 * MIN;
+    phase = st.polar ? (st.polar === 'day' ? 'day' : 'night')
+      : now < st.rise - D || now > st.set + D ? 'night' : now < st.rise + D ? 'dawn' : now > st.set - D ? 'dusk' : 'day';
+  } else { const h = new Date(now).getHours(); phase = h < 6 || h >= 20 ? 'night' : h < 8 ? 'dawn' : h >= 18 ? 'dusk' : 'day'; }
+  const c = sceneWx || {}, icon = c.icon || '', cond = c.condition || '', temp = c.temperature;
+  let precip = PRECIP_OF[cond] || PRECIP_OF[icon] || null;
+  if (!precip && sceneRainNow) precip = temp != null && temp <= 0 ? 'snow' : 'rain';   // Radar: regnet gerade am Standort
+  let sky = cond === 'fog' || icon === 'fog' ? 'fog' : icon.startsWith('clear') ? 'clear' : icon.startsWith('partly') || icon === 'wind' ? 'partly' : icon === 'cloudy' ? 'cloudy' : null;
+  if (!sky) sky = precip ? 'cloudy' : c.cloud_cover == null ? 'partly' : c.cloud_cover < 25 ? 'clear' : c.cloud_cover < 75 ? 'partly' : 'cloudy';
+  if (precip && sky === 'clear') sky = 'partly';
+  const gust = c.wind_gust_speed_10 ?? c.wind_gust_speed_30 ?? c.wind_gust_speed_60;
+  return {
+    season, phase, sky, precip, storm: cond === 'thunderstorm' || icon === 'thunderstorm',
+    hot: temp != null && temp >= 27, windy: icon === 'wind' || (gust != null && gust >= 50),
+    snowCover: precip === 'snow' || (precip === 'sleet' && temp != null && temp <= 1), frost: temp != null && temp <= 0
+  };
+}
+function renderScene() {
+  document.body.classList.toggle('scene', !!S.scene);
+  const box = $('#scene');
+  if (!S.scene) { box.innerHTML = ''; sceneKey = ''; return; }
+  const st = scenePreview() || sceneState(), key = JSON.stringify(st);
+  if (key === sceneKey) return;
+  sceneKey = key;
+  const layer = document.createElement('div');
+  layer.innerHTML = window.SCENE.svg(st);
+  box.appendChild(layer);
+  requestAnimationFrame(() => requestAnimationFrame(() => { layer.style.opacity = '1'; }));   // sanft überblenden
+  setTimeout(() => { while (box.children.length > 1) box.firstElementChild.remove(); }, 1400);
+}
+
 // ---------- Aktuelles Wetter ----------
 const ICON_TXT = { 'clear-day': 'Sonnig', 'clear-night': 'Klar', 'partly-cloudy-day': 'Teilweise bewölkt', 'partly-cloudy-night': 'Teilweise bewölkt', cloudy: 'Bewölkt', fog: 'Nebel', wind: 'Windig', rain: 'Regen', sleet: 'Schneeregen', snow: 'Schnee', hail: 'Hagel', thunderstorm: 'Gewitter' };
 const COND = { fog: 'Nebel', rain: 'Regen', sleet: 'Schneeregen', snow: 'Schnee', hail: 'Hagel', thunderstorm: 'Gewitter' };
@@ -319,6 +377,7 @@ async function loadCurrent(lat, lon) {
   }
   if (!d) d = await getJSON(`${BS}/current_weather?lat=${lat.toFixed(4)}&lon=${lon.toFixed(4)}&tz=Europe/Berlin`);
   const c = d.weather, src = (d.sources || []).find(s => s.id === c.source_id) || d.sources?.[0];
+  sceneWx = c; renderScene();
   $('#nowIcon').innerHTML = window.ICONS.weather(c.icon);
   $('#nowTemp').textContent = `${fmt(c.temperature)} °C`;
   $('#nowDesc').textContent = COND[c.condition] || ICON_TXT[c.icon] || 'trocken';
@@ -1231,6 +1290,7 @@ const rainCol = (mmh) => mmh < 0.5 ? '#9fd3ff' : mmh < 2 ? '#2f7fff' : mmh < 10 
 let lastNowcast;
 function renderNowcast(r) {
   lastNowcast = r;
+  if (sceneRainNow !== !!r?.atLoc) { sceneRainNow = !!r?.atLoc; renderScene(); }
   const el = $('#rainHint');
   if (!r) { el.className = 'rainhint small'; el.innerHTML = ''; $('#ncChart').innerHTML = ''; $('#ncInfo').textContent = 'Radardaten derzeit nicht abrufbar.'; return; }
   let cls, txt;
@@ -1344,6 +1404,7 @@ async function refresh() {
   const jobs = [];
   if (isOn('warnings')) jobs.push(loadWarnings(lat, lon).catch(() => { $('#warnings').innerHTML = ''; }));
   if (isOn('now')) { renderSun(); jobs.push(loadCurrent(lat, lon).catch(e => { $('#nowStation').textContent = `Aktuelle Werte nicht abrufbar (${e.message})`; })); }
+  else if (S.scene) jobs.push(getJSON(`${BS}/current_weather?lat=${lat.toFixed(4)}&lon=${lon.toFixed(4)}&tz=Europe/Berlin`).then(d => { sceneWx = d.weather; renderScene(); }).catch(() => {}));
   const radarJob = isOn('nowcast') ? loadRadar(lat, lon).then(renderNowcast).catch(() => renderNowcast(null)) : Promise.resolve();
   jobs.push(radarJob);
   if (isOn('daytext')) jobs.push(loadDayText(lat, lon).catch(e => { $('#dayText').textContent = `Textprognose nicht abrufbar (${e.message}).`; renderWinter([]); }));
@@ -1382,6 +1443,7 @@ function initSettings() {
   bind('#setInterval', 'intervalMin', Number, schedule);
   bind('#setNotify', 'notify'); bind('#setWarnNotify', 'warnNotify'); bind('#setAuto', 'autoLocate');
   bind('#setTheme', 'theme', v => v, applyTheme);
+  bind('#setScene', 'scene', v => v, renderScene);
   document.querySelectorAll('#themeSeg button').forEach(b => b.onclick = () => { S.theme = b.dataset.theme; save(); applyTheme(); });
   $('#btnLayout').innerHTML = `${I('layout')} Abschnitte auswählen und sortieren`;
   $('#btnLayout').onclick = () => { $('#dlgSettings').close(); openLayout(false); };
@@ -1424,7 +1486,7 @@ function initPwa() {
 // ---------- Start ----------
 function init() {
   if (isUpgrade && !S.layoutSeen.length) S.layoutSeen = SECTIONS.map(x => x.id).filter(id => !NEW_IN_VERSION.includes(id));
-  S.layout = normLayout(); save(); applyLayout(); applyTheme();
+  S.layout = normLayout(); save(); applyLayout(); applyTheme(); renderScene();
   $('#bkgYear').textContent = `(${YEAR})`;
   $('#appVersion').textContent = `Version ${APP_VERSION}`;
   $('#btnLocate').innerHTML = I('gps'); $('#btnSearch').innerHTML = I('search'); $('#btnRefresh').innerHTML = I('refresh');
@@ -1456,7 +1518,7 @@ function init() {
   const startLocate = () => { if (S.autoLocate || !S.loc) locate(); };
   if (S.wizardFor !== WIZARD_VERSION) { afterLayout = startLocate; openLayout(true); } else startLocate();
   schedule();
-  setInterval(() => { if (isOn('now')) renderSun(); }, 10 * MIN);
+  setInterval(() => { if (isOn('now')) renderSun(); renderScene(); }, 10 * MIN);
 }
 let rsT;
 window.addEventListener('resize', () => { clearTimeout(rsT); rsT = setTimeout(() => { if (lastChart) drawChart(...lastChart); if (lastNowcast) renderNowcast(lastNowcast); }, 150); });
