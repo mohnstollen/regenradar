@@ -25,16 +25,39 @@ eingebetteten Seiten wie Windy.
 - Doppelte Meldungen verhindert die App selbst: Jede Warnung kommt nur einmal, der Regenhinweis höchstens
   einmal pro Stunde, egal ob er aus der offenen App oder aus der Hintergrundprüfung stammt.
 
+## Widgets
+
+Auf dem Startbildschirm gibt es drei Widgets (lange auf den Startbildschirm tippen → Widgets → Wetter):
+
+- **Wetter klein (2×1):** Wettersymbol, Temperatur, Ort
+- **Wetter mit Regen und Stunden (4×2):**
+  - aktuelle Temperatur mit Beschreibung und gefühlter Temperatur
+  - Tageshöchst- und -tiefstwert
+  - Hinweis aus dem DWD-Radar für die nächsten 2 Stunden
+  - fünf Vorhersagezeitpunkte im 2-Stunden-Abstand, mit Regenwahrscheinlichkeit
+- **Wetter mit Warnungen und 5 Tagen (4×3):** wie 4×2, dazu
+  - die wichtigste aktuelle DWD-Warnung in ihrer Warnfarbe (mit Anzahl weiterer Warnungen)
+  - die nächsten 5 Tage mit Symbol, Höchst-/Tiefstwert und Niederschlag (Tageswerte wie in der 10-Tage-Übersicht)
+  - Mit Warnung braucht es etwa 240 dp Höhe. Wird es auf einem Startbildschirm unten knapp, das Widget auf 4×4 ziehen.
+
+Die Widgets zeigen den zuletzt in der App angezeigten Ort. Antippen öffnet die App. Die Daten holt
+`CheckService` von Bright Sky, solange ein Widget existiert, etwa alle 15 Minuten. Nach einem Ortswechsel
+in der App oder beim Hinzufügen eines Widgets geschieht das sofort. Die Widgets übernehmen Hell/Dunkel aus
+der App. Bei „Wie System“ folgen sie dem Systemmodus.
+
+Die Wettersymbole der Widgets (`res/drawable-nodpi/wx_*.png`) entstehen aus `../wetter/icons.js`.
+Ändern sich die Symbole, erzeugt `node tools/render-icons.js` sie neu (braucht Playwright).
+
 ## Bauen
 
 ```sh
-sudo apt install android-sdk-platform-23 android-sdk-build-tools dalvik-exchange apksigner zipalign
+sudo apt install android-sdk-build-tools dalvik-exchange apksigner zipalign
 ./build.sh
 ```
 
-Das Skript braucht kein Gradle und kein Android Studio. Zum Kompilieren gegen die aktuelle Android-API
-lädt es beim ersten Lauf Robolectrics `android-all` von Maven Central (~140 MB, mit SHA-1-Prüfung,
-zwischengespeichert in `~/.cache/wetter-android`). Das Ergebnis ist `wetter-<version>.apk`; die
+Das Skript braucht kein Gradle und kein Android Studio. Als Android-API 34 für Ressourcen und Java lädt es
+beim ersten Lauf Robolectrics `android-all` von Maven Central (~140 MB, mit SHA-1-Prüfung, zwischengespeichert
+in `~/.cache/wetter-android`). Das Ergebnis ist `wetter-<version>.apk`; die
 Version kommt aus `APP_VERSION` in `wetter/app.js`. Signiert wird mit `$KEYSTORE`
 (Standard: `~/.android/wetter.jks`). Gibt es den Schlüssel noch nicht, wird er neu erzeugt. Für Updates
 über eine installierte Version muss die APK mit **demselben** Schlüssel signiert sein.

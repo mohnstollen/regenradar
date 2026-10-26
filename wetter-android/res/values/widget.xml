@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- Widget-Farben; values-night gilt bei „Wie System“ im dunklen Modus -->
+    <color name="w_bg">#F2FFFFFF</color>
+    <color name="w_text">#1C2733</color>
+    <color name="w_muted">#6B7A8C</color>
+    <color name="w_rain">#1F6FE0</color>
+    <string name="widget_small_desc">Wettersymbol, Temperatur und Ort</string>
+    <string name="widget_wide_desc">Aktuelles Wetter, Regen in den nächsten 2 Stunden und die nächsten Stunden</string>
+    <color name="w_line">#1F1C2733</color>
+    <string name="widget_large_desc">Aktuelles Wetter, DWD-Warnungen, Regen in 2 Stunden, die nächsten Stunden und 5 Tage</string>
+</resources>

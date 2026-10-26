@@ -128,13 +128,26 @@ public class MainActivity extends Activity {
                 return String.valueOf(Notifier.show(this, a.getString(1), a.getString(2), a.getString(3)));
             case "sync": {
                 JSONObject o = a.getJSONObject(1);
-                SharedPreferences.Editor e = Notifier.prefs(this).edit()
+                SharedPreferences p = Notifier.prefs(this);
+                long oldLat = p.getLong("lat", 0), oldLon = p.getLong("lon", 0);
+                SharedPreferences.Editor e = p.edit()
                     .putBoolean("notify", o.optBoolean("notify"))
-                    .putBoolean("warnNotify", o.optBoolean("warnNotify"));
-                if (o.isNull("lat") || o.isNull("lon")) e.remove("lat").remove("lon");
-                else e.putLong("lat", Double.doubleToLongBits(o.getDouble("lat"))).putLong("lon", Double.doubleToLongBits(o.getDouble("lon")));
+                    .putBoolean("warnNotify", o.optBoolean("warnNotify"))
+                    .putString("name", o.optString("name", ""))
+                    .putString("theme", o.optString("theme", "system"));
+                boolean moved;
+                if (o.isNull("lat") || o.isNull("lon")) { e.remove("lat").remove("lon"); moved = false; }
+                else {
+                    long lat = Double.doubleToLongBits(o.getDouble("lat")), lon = Double.doubleToLongBits(o.getDouble("lon"));
+                    moved = lat != oldLat || lon != oldLon;
+                    e.putLong("lat", lat).putLong("lon", lon);
+                }
                 e.apply();
                 CheckService.update(this);
+                if (Widgets.any(this)) {
+                    Widgets.render(this);                  // Ortsname, Hell/Dunkel sofort
+                    if (moved) CheckService.runSoon(this); // neuer Ort: frische Daten holen
+                }
                 return "null";
             }
             default:
