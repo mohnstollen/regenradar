@@ -27,7 +27,7 @@ eingebetteten Seiten wie Windy.
 
 ## Widgets
 
-Auf dem Startbildschirm gibt es zwei Widgets (lange auf den Startbildschirm tippen → Widgets → Wetter):
+Auf dem Startbildschirm gibt es drei Widgets (lange auf den Startbildschirm tippen → Widgets → Wetter):
 
 - **Wetter klein (2×1):** Wettersymbol, Temperatur, Ort
 - **Wetter mit Regen und Stunden (4×2):**
@@ -35,6 +35,10 @@ Auf dem Startbildschirm gibt es zwei Widgets (lange auf den Startbildschirm tipp
   - Tageshöchst- und -tiefstwert
   - Hinweis aus dem DWD-Radar für die nächsten 2 Stunden
   - fünf Vorhersagezeitpunkte im 2-Stunden-Abstand, mit Regenwahrscheinlichkeit
+- **Wetter mit Warnungen und 5 Tagen (4×3):** wie 4×2, dazu
+  - die wichtigste aktuelle DWD-Warnung in ihrer Warnfarbe (mit Anzahl weiterer Warnungen)
+  - die nächsten 5 Tage mit Symbol, Höchst-/Tiefstwert und Niederschlag (Tageswerte wie in der 10-Tage-Übersicht)
+  - Mit Warnung braucht es etwa 240 dp Höhe. Wird es auf einem Startbildschirm unten knapp, das Widget auf 4×4 ziehen.
 
 Die Widgets zeigen den zuletzt in der App angezeigten Ort. Antippen öffnet die App. Die Daten holt
 `CheckService` von Bright Sky, solange ein Widget existiert, etwa alle 15 Minuten. Nach einem Ortswechsel

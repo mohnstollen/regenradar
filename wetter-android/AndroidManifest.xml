@@ -36,6 +36,10 @@
             <intent-filter><action android:name="android.appwidget.action.APPWIDGET_UPDATE" /></intent-filter>
             <meta-data android:name="android.appwidget.provider" android:resource="@xml/widget_wide_info" />
         </receiver>
+        <receiver android:name=".WidgetLarge" android:exported="false" android:label="Wetter mit Warnungen und 5 Tagen">
+            <intent-filter><action android:name="android.appwidget.action.APPWIDGET_UPDATE" /></intent-filter>
+            <meta-data android:name="android.appwidget.provider" android:resource="@xml/widget_large_info" />
+        </receiver>
         <service
             android:name=".CheckService"
             android:exported="false"

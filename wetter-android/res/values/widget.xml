@@ -7,4 +7,6 @@
     <color name="w_rain">#1F6FE0</color>
     <string name="widget_small_desc">Wettersymbol, Temperatur und Ort</string>
     <string name="widget_wide_desc">Aktuelles Wetter, Regen in den nächsten 2 Stunden und die nächsten Stunden</string>
+    <color name="w_line">#1F1C2733</color>
+    <string name="widget_large_desc">Aktuelles Wetter, DWD-Warnungen, Regen in 2 Stunden, die nächsten Stunden und 5 Tage</string>
 </resources>

@@ -1,4 +1,7 @@
-# Wetter-App (PWA) – Version 3.8.0
+# Wetter-App (PWA) – Version 3.9.0
+
+## Neu in 3.9
+- Android-App: großes Widget 4×3 mit DWD-Warnung, den nächsten Stunden und den nächsten 5 Tagen
 
 ## Neu in 3.8
 - Android-App: Startbildschirm-Widgets 2×1 (Symbol, Temperatur, Ort) und 4×2 (zusätzlich Regen in 2 Stunden und

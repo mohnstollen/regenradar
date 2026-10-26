@@ -13,25 +13,42 @@ import org.json.JSONArray;
 import org.json.JSONException;
 import org.json.JSONObject;
 
+import java.util.ArrayList;
 import java.util.Calendar;
 import java.util.HashMap;
+import java.util.List;
 import java.util.Locale;
 import java.util.Map;
+import java.util.TreeMap;
 
 /**
- * Startbildschirm-Widgets: klein (2×1, Symbol + Temperatur + Ort) und breit (4×2, dazu Regen in 2 Stunden
- * und die nächsten Stunden). Die Daten holt CheckService; hier werden sie zwischengespeichert und gezeichnet,
+ * Startbildschirm-Widgets: klein (2×1, Symbol + Temperatur + Ort), breit (4×2, dazu Regen in 2 Stunden
+ * und die nächsten Stunden) und groß (4×3, dazu DWD-Warnung und die nächsten 5 Tage). Die Daten holt CheckService; hier werden sie zwischengespeichert und gezeichnet,
  * damit die Widgets auch ohne Netz sofort etwas zeigen.
  */
 final class Widgets {
     private static final String CACHE = "widgetData";
-    private static final int SLOTS = 5, STEP_H = 2;
+    private static final int SLOTS = 5, STEP_H = 2, DAYS = 5;
+    private static final String[] WD = { "So", "Mo", "Di", "Mi", "Do", "Fr", "Sa" };
     // Farben bei fest gewählter Darstellung; bei „Wie System“ gelten die Ressourcen (values / values-night)
     private static final int[] LIGHT = { 0xFF1C2733, 0xFF6B7A8C, 0xFF1F6FE0 }, DARK = { 0xFFE6EDF3, 0xFF93A1B0, 0xFF6EA8FF };
     private static final int[] HOUR_IDS = {
         R.id.h0_time, R.id.h0_icon, R.id.h0_temp, R.id.h0_prob, R.id.h1_time, R.id.h1_icon, R.id.h1_temp, R.id.h1_prob,
         R.id.h2_time, R.id.h2_icon, R.id.h2_temp, R.id.h2_prob, R.id.h3_time, R.id.h3_icon, R.id.h3_temp, R.id.h3_prob,
         R.id.h4_time, R.id.h4_icon, R.id.h4_temp, R.id.h4_prob };
+    private static final int[] DAY_IDS = {
+        R.id.d0_day, R.id.d0_icon, R.id.d0_hi, R.id.d0_lo, R.id.d0_mm, R.id.d1_day, R.id.d1_icon, R.id.d1_hi, R.id.d1_lo, R.id.d1_mm,
+        R.id.d2_day, R.id.d2_icon, R.id.d2_hi, R.id.d2_lo, R.id.d2_mm, R.id.d3_day, R.id.d3_icon, R.id.d3_hi, R.id.d3_lo, R.id.d3_mm,
+        R.id.d4_day, R.id.d4_icon, R.id.d4_hi, R.id.d4_lo, R.id.d4_mm };
+    // Warnstufen wie .warn.* in style.css: Hintergrund (Drawable) und Schriftfarbe
+    private static final Map<String, int[]> WARN = new HashMap<>();
+    static {
+        WARN.put("minor", new int[] { R.drawable.warn_minor, 0xFF4D4300 });
+        WARN.put("moderate", new int[] { R.drawable.warn_moderate, 0xFF5A3000 });
+        WARN.put("severe", new int[] { R.drawable.warn_severe, 0xFF5F0E0E });
+        WARN.put("extreme", new int[] { R.drawable.warn_extreme, 0xFF3B0A47 });
+        WARN.put("heat", new int[] { R.drawable.warn_heat, 0xFF5C1F00 });
+    }
 
     private static final Map<String, String> ICON_TXT = new HashMap<>(), COND = new HashMap<>();
     static {   // wie ICON_TXT und COND in app.js
@@ -49,7 +66,7 @@ final class Widgets {
     }
 
     static boolean any(Context c) {
-        return ids(c, WidgetSmall.class).length + ids(c, WidgetWide.class).length > 0;
+        return ids(c, WidgetSmall.class).length + ids(c, WidgetWide.class).length + ids(c, WidgetLarge.class).length > 0;
     }
 
     // ---------- Daten ----------
@@ -76,7 +93,11 @@ final class Widgets {
             long dayStart = cal.getTimeInMillis();
             cal.add(Calendar.DAY_OF_MONTH, 1);
             long dayEnd = cal.getTimeInMillis();
-            JSONArray rows = BrightSky.hourly(lat, lon, dayStart, Math.max(dayEnd, now + (SLOTS * STEP_H + 2) * 3600000L));
+            boolean large = ids(c, WidgetLarge.class).length > 0;
+            cal.add(Calendar.DAY_OF_MONTH, DAYS + 1);
+            long to = large ? cal.getTimeInMillis() : Math.max(dayEnd, now + (SLOTS * STEP_H + 2) * 3600000L);
+            JSONArray rows = BrightSky.hourly(lat, lon, dayStart, to);
+            Map<Long, List<JSONObject>> byDay = new TreeMap<>();
             double hi = Double.NEGATIVE_INFINITY, lo = Double.POSITIVE_INFINITY;
             JSONArray hours = new JSONArray();
             long next = -1;
@@ -84,6 +105,11 @@ final class Widgets {
                 JSONObject r = rows.getJSONObject(i);
                 long ts = BrightSky.parseIso(r.getString("timestamp"));
                 double tt = r.optDouble("temperature", Double.NaN);
+                long day = startOfDay(ts - 1);   // Stundenwerte gelten für die Stunde davor (wie loadDays in app.js)
+                if (large && day >= dayEnd) {
+                    if (!byDay.containsKey(day)) byDay.put(day, new ArrayList<JSONObject>());
+                    byDay.get(day).add(r.put("_t", ts));
+                }
                 if (ts > dayStart && ts <= dayEnd && !Double.isNaN(tt)) { hi = Math.max(hi, tt); lo = Math.min(lo, tt); }
                 if (ts <= now || hours.length() >= SLOTS || (next > 0 && ts < next)) continue;
                 hours.put(new JSONObject().put("t", ts).put("icon", r.optString("icon", "unknown")).put("temp", tt)
@@ -92,10 +118,82 @@ final class Widgets {
             }
             if (hi > lo) d.put("hi", hi).put("lo", lo);
             d.put("hours", hours);
+            JSONArray days = new JSONArray();
+            for (Map.Entry<Long, List<JSONObject>> e : byDay.entrySet()) {
+                List<JSONObject> l = e.getValue();
+                if (l.size() < 12 || days.length() >= DAYS) continue;
+                double dh = Double.NEGATIVE_INFINITY, dl = Double.POSITIVE_INFINITY, mm = 0;
+                for (JSONObject r : l) {
+                    double tt = r.optDouble("temperature", Double.NaN);
+                    if (!Double.isNaN(tt)) { dh = Math.max(dh, tt); dl = Math.min(dl, tt); }
+                    mm += r.optDouble("precipitation", 0);
+                }
+                days.put(new JSONObject().put("t", e.getKey()).put("icon", dayIcon(l)).put("hi", dh).put("lo", dl).put("mm", mm));
+            }
+            d.put("days", days);
         } catch (Exception ignored) { }
+        if (ids(c, WidgetLarge.class).length > 0) {
+            try { d.put("warn", topWarning(BrightSky.alerts(lat, lon))); } catch (Exception ignored) { }
+        }
         try { d.put("rain", rainText(nc)).put("rainNow", nc != null && (nc.raining || nc.eta >= 0)); } catch (JSONException ignored) { }
         Notifier.prefs(c).edit().putString(CACHE, d.toString()).apply();
         render(c);
+    }
+
+    private static long startOfDay(long ms) {
+        Calendar cal = Calendar.getInstance();
+        cal.setTimeInMillis(ms);
+        cal.set(Calendar.HOUR_OF_DAY, 0); cal.set(Calendar.MINUTE, 0); cal.set(Calendar.SECOND, 0); cal.set(Calendar.MILLISECOND, 0);
+        return cal.getTimeInMillis();
+    }
+
+    // wie dayIcon() in app.js
+    private static String dayIcon(List<JSONObject> list) {
+        List<JSONObject> day = new ArrayList<>();
+        Calendar cal = Calendar.getInstance();
+        for (JSONObject r : list) { cal.setTimeInMillis(r.optLong("_t")); int h = cal.get(Calendar.HOUR_OF_DAY); if (h >= 7 && h <= 19) day.add(r); }
+        List<JSONObject> L = day.isEmpty() ? list : day;
+        double mm = 0;
+        for (JSONObject r : list) mm += r.optDouble("precipitation", 0);
+        if (count(L, "thunderstorm") >= 1) return "thunderstorm";
+        if (mm >= 0.5) {
+            if (count(L, "snow") >= 3) return "snow";
+            if (count(L, "sleet") >= 3) return "sleet";
+            int wet = 0;
+            for (JSONObject r : L) if (r.optDouble("precipitation", 0) >= 0.1) wet++;
+            return wet >= 5 ? "rain" : "showers";
+        }
+        if (count(L, "fog") >= 4) return "fog";
+        double sum = 0; int n = 0;
+        for (JSONObject r : L) if (!r.isNull("cloud_cover")) { sum += r.optDouble("cloud_cover", 0); n++; }
+        if (n == 0) {
+            String best = "clear-day";
+            for (String k : new String[] { "partly-cloudy-day", "cloudy" }) if (count(L, k) > count(L, best)) best = k;
+            return best;
+        }
+        double cl = sum / n;
+        return cl < 25 ? "clear-day" : cl < 70 ? "partly-cloudy-day" : "cloudy";
+    }
+
+    private static int count(List<JSONObject> l, String icon) {
+        int n = 0;
+        for (JSONObject r : l) if (icon.equals(r.optString("icon"))) n++;
+        return n;
+    }
+
+    /** Wichtigste Warnung (höchste Stufe, Hitze gesondert wie in app.js) mit Anzahl weiterer; null = keine. */
+    private static JSONObject topWarning(JSONArray list) throws JSONException {
+        JSONObject top = null; int topRank = -1;
+        for (int i = 0; i < list.length(); i++) {
+            JSONObject a = list.getJSONObject(i);
+            int rank = java.util.Arrays.asList("minor", "moderate", "severe", "extreme").indexOf(a.optString("severity"));
+            if (rank > topRank) { topRank = rank; top = a; }
+        }
+        if (top == null) return null;
+        String head = top.isNull("headline_de") ? top.optString("event_de", "Warnung") : top.optString("headline_de");
+        boolean heat = (top.optString("event_de") + " " + head).toUpperCase(Locale.GERMANY).contains("HITZE");
+        return new JSONObject().put("text", head + (list.length() > 1 ? " (+" + (list.length() - 1) + ")" : ""))
+            .put("sev", heat ? "heat" : WARN.containsKey(top.optString("severity")) ? top.optString("severity") : "minor");
     }
 
     private static String rainText(BrightSky.Nowcast nc) {
@@ -126,14 +224,16 @@ final class Widgets {
     static void render(Context c) {
         AppWidgetManager mgr = AppWidgetManager.getInstance(c);
         int[] small = ids(c, WidgetSmall.class), wide = ids(c, WidgetWide.class);
+        int[] large = ids(c, WidgetLarge.class);
         if (small.length > 0) mgr.updateAppWidget(small, build(c, R.layout.widget_small));
         if (wide.length > 0) mgr.updateAppWidget(wide, build(c, R.layout.widget_wide));
+        if (large.length > 0) mgr.updateAppWidget(large, build(c, R.layout.widget_large));
     }
 
     private static RemoteViews build(Context c, int layout) {
         SharedPreferences p = Notifier.prefs(c);
         RemoteViews v = new RemoteViews(c.getPackageName(), layout);
-        boolean wide = layout == R.layout.widget_wide;
+        boolean large = layout == R.layout.widget_large, wide = large || layout == R.layout.widget_wide;
         JSONObject d;
         try { d = new JSONObject(p.getString(CACHE, "{}")); } catch (JSONException e) { d = new JSONObject(); }
 
@@ -164,7 +264,35 @@ final class Widgets {
                 v.setTextViewText(HOUR_IDS[base + 3], prob >= 10 ? prob + " %" : "");
             }
         }
-        applyTheme(c, v, p.getString("theme", "system"), wide);
+        if (large) {
+            JSONObject w = d.optJSONObject("warn");
+            v.setViewVisibility(R.id.warn, w != null ? View.VISIBLE : View.GONE);
+            if (w != null) {
+                int[] style = WARN.get(w.optString("sev", "minor"));
+                v.setTextViewText(R.id.warn, w.optString("text"));
+                v.setInt(R.id.warn, "setBackgroundResource", style[0]);
+                v.setTextColor(R.id.warn, style[1]);
+            }
+            JSONArray days = d.optJSONArray("days");
+            Calendar cal = Calendar.getInstance();
+            for (int i = 0; i < DAYS; i++) {
+                JSONObject x = days != null ? days.optJSONObject(i) : null;
+                int base = i * 5;
+                v.setViewVisibility(DAY_IDS[base + 1], x != null ? View.VISIBLE : View.INVISIBLE);
+                String label = "";
+                if (x != null) {
+                    cal.setTimeInMillis(x.optLong("t"));
+                    label = WD[cal.get(Calendar.DAY_OF_WEEK) - 1] + " " + cal.get(Calendar.DAY_OF_MONTH) + ".";
+                    v.setImageViewResource(DAY_IDS[base + 1], iconRes(c, x.optString("icon", "unknown")));
+                }
+                v.setTextViewText(DAY_IDS[base], label);
+                v.setTextViewText(DAY_IDS[base + 2], x != null ? deg(x.optDouble("hi", Double.NaN)) : "");
+                v.setTextViewText(DAY_IDS[base + 3], x != null ? deg(x.optDouble("lo", Double.NaN)) : "");
+                double mm = x != null ? x.optDouble("mm", 0) : 0;
+                v.setTextViewText(DAY_IDS[base + 4], mm >= 0.5 ? String.format(Locale.GERMANY, mm < 10 ? "%.1f mm" : "%.0f mm", mm) : "");
+            }
+        }
+        applyTheme(c, v, p.getString("theme", "system"), wide, large);
 
         Intent open = new Intent(c, MainActivity.class).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK | Intent.FLAG_ACTIVITY_SINGLE_TOP);
         v.setOnClickPendingIntent(R.id.root, PendingIntent.getActivity(c, 1, open, PendingIntent.FLAG_IMMUTABLE | PendingIntent.FLAG_UPDATE_CURRENT));
@@ -172,7 +300,7 @@ final class Widgets {
     }
 
     /** Fest gewähltes Hell/Dunkel aus der App übernehmen; bei „Wie System“ bleiben die Ressourcenfarben (folgen dem Systemmodus). */
-    private static void applyTheme(Context c, RemoteViews v, String theme, boolean wide) {
+    private static void applyTheme(Context c, RemoteViews v, String theme, boolean wide, boolean large) {
         if (!theme.equals("light") && !theme.equals("dark")) return;
         boolean dark = theme.equals("dark");
         int[] col = dark ? DARK : LIGHT;
@@ -189,6 +317,14 @@ final class Widgets {
             v.setTextColor(HOUR_IDS[i * 4], col[1]);
             v.setTextColor(HOUR_IDS[i * 4 + 2], col[0]);
             v.setTextColor(HOUR_IDS[i * 4 + 3], col[2]);
+        }
+        if (!large) return;
+        v.setInt(R.id.divider, "setBackgroundColor", dark ? 0x33E6EDF3 : 0x1F1C2733);
+        for (int i = 0; i < DAYS; i++) {
+            v.setTextColor(DAY_IDS[i * 5], col[1]);
+            v.setTextColor(DAY_IDS[i * 5 + 2], col[0]);
+            v.setTextColor(DAY_IDS[i * 5 + 3], col[1]);
+            v.setTextColor(DAY_IDS[i * 5 + 4], col[2]);
         }
     }
 

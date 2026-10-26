@@ -11,7 +11,7 @@
  * Pollen:      DWD Pollenflug-Gefahrenindex, außerhalb DE Open-Meteo/CAMS
  */
 'use strict';
-const APP_VERSION = '3.8.0';
+const APP_VERSION = '3.9.0';
 const WIZARD_VERSION = '3.5';
 
 // ---------- Endpunkte ----------
