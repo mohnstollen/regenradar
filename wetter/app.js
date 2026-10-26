@@ -11,7 +11,7 @@
  * Pollen:      DWD Pollenflug-Gefahrenindex, außerhalb DE Open-Meteo/CAMS
  */
 'use strict';
-const APP_VERSION = '3.6.0';
+const APP_VERSION = '3.7.0';
 const WIZARD_VERSION = '3.5';
 
 // ---------- Endpunkte ----------
@@ -91,7 +91,7 @@ const DEFAULTS = {
   loc: null, station: null, favs: [], basemap: 'bm_grau', sat: 'auto', satDay: '', satNight: '', intervalMin: 10,
   notify: false, warnNotify: true, autoLocate: true, mapMode: 'radar', model: 'icon_d2', rangeH: 12,
   pollen: POLLEN.map(p => p.k), pollenRegion: 'auto', pollenHideZero: false,
-  showFeels: true, showDew: true, layout: null, layoutSeen: [], wizardFor: null, theme: 'system', scene: true
+  showFeels: true, showDew: true, layout: null, layoutSeen: [], wizardFor: null, theme: 'system', scene: true, glass: 84
 };
 let S = (() => {
   try { const s = Object.assign({}, DEFAULTS, JSON.parse(localStorage.getItem(LS) || '{}')); s.favs = Array.isArray(s.favs) ? s.favs : []; return s; }
@@ -296,6 +296,59 @@ function sunTimes(dayMs, lat, lon) {
   const w = deg(Math.acos(cw)) / 360;
   return { rise: toMs(Jt - w), set: toMs(Jt + w) };
 }
+// ---------- Mond (Formeln nach astronomyanswers.com / SunCalc, Genauigkeit wenige Minuten) ----------
+const J2000_MS = Date.UTC(2000, 0, 1, 12), ECL = rad(23.4397);
+const astroDays = (ms) => (ms - J2000_MS) / 86400000;
+const raOf = (l, b) => Math.atan2(Math.sin(l) * Math.cos(ECL) - Math.tan(b) * Math.sin(ECL), Math.cos(l));
+const decOf = (l, b) => Math.asin(Math.sin(b) * Math.cos(ECL) + Math.cos(b) * Math.sin(ECL) * Math.sin(l));
+function moonCoords(d) {
+  const L = rad(218.316 + 13.176396 * d), M = rad(134.963 + 13.064993 * d), F = rad(93.272 + 13.229350 * d);
+  const l = L + rad(6.289) * Math.sin(M), b = rad(5.128) * Math.sin(F);
+  return { ra: raOf(l, b), dec: decOf(l, b), dist: 385001 - 20905 * Math.cos(M) };
+}
+function moonAltitude(ms, lat, lon) {
+  const d = astroDays(ms), c = moonCoords(d), phi = rad(lat);
+  const H = rad(280.16 + 360.9856235 * d) + rad(lon) - c.ra;
+  return Math.asin(Math.sin(phi) * Math.sin(c.dec) + Math.cos(phi) * Math.cos(c.dec) * Math.cos(H));
+}
+// Phase 0 = Neumond, 0,25 = erstes Viertel, 0,5 = Vollmond, 0,75 = letztes Viertel; frac = beleuchteter Anteil
+function moonPhase(ms) {
+  const d = astroDays(ms), M = rad(357.5291 + 0.98560028 * d);
+  const Ls = M + rad(1.9148 * Math.sin(M) + 0.02 * Math.sin(2 * M) + 0.0003 * Math.sin(3 * M)) + rad(102.9372) + Math.PI;
+  const s = { ra: raOf(Ls, 0), dec: decOf(Ls, 0), dist: 149598000 }, m = moonCoords(d);
+  const phi = Math.acos(Math.sin(s.dec) * Math.sin(m.dec) + Math.cos(s.dec) * Math.cos(m.dec) * Math.cos(s.ra - m.ra));
+  const inc = Math.atan2(s.dist * Math.sin(phi), m.dist - s.dist * Math.cos(phi));
+  const ang = Math.atan2(Math.cos(s.dec) * Math.sin(s.ra - m.ra), Math.sin(s.dec) * Math.cos(m.dec) - Math.cos(s.dec) * Math.sin(m.dec) * Math.cos(s.ra - m.ra));
+  return { frac: (1 + Math.cos(inc)) / 2, phase: 0.5 + 0.5 * inc * (ang < 0 ? -1 : 1) / Math.PI };
+}
+// Auf- und Untergänge im Zeitraum [from, from + hours] (Horizont inkl. Refraktion/Mondradius)
+function moonEvents(from, hours, lat, lon) {
+  const ev = [], alt = (h) => moonAltitude(from + h * HOUR, lat, lon) - rad(0.133);
+  let h0 = alt(0);
+  for (let i = 1; i <= hours; i += 2) {
+    // Parabel durch drei Stunden-Werte; Nullstellen im Intervall = Horizontdurchgang, steigend = Aufgang
+    const h1 = alt(i), h2 = alt(i + 1), a = (h0 + h2) / 2 - h1, b = (h2 - h0) / 2, xe = -b / (2 * a), disc = b * b - 4 * a * h1;
+    if (disc >= 0 && a !== 0) {
+      const dx = Math.sqrt(disc) / (Math.abs(a) * 2);
+      for (const x of [xe - dx, xe + dx]) if (Math.abs(x) <= 1) ev.push({ t: from + (i + x) * HOUR, rise: 2 * a * x + b > 0 });
+    } else if (a === 0 && b !== 0 && Math.abs(-h1 / b) <= 1) ev.push({ t: from + (i - h1 / b) * HOUR, rise: b > 0 });
+    h0 = h2;
+  }
+  return ev.sort((p, q) => p.t - q.t);
+}
+const MOON_NAMES = [[0.03, 'Neumond'], [0.22, 'zunehmende Sichel'], [0.28, 'zunehmender Halbmond'], [0.47, 'zunehmender Mond'], [0.53, 'Vollmond'], [0.72, 'abnehmender Mond'], [0.78, 'abnehmender Halbmond'], [0.97, 'abnehmende Sichel'], [1.01, 'Neumond']];
+const moonName = (p) => MOON_NAMES.find(([lim]) => p < lim)[1];
+function nextFullNew(ms) {   // nächster Voll- bzw. Neumond (Suche in 1-h-Schritten, auf die Stunde genau)
+  const out = {}; let prev = moonPhase(ms).phase;
+  for (let t = ms + HOUR; t < ms + 31 * 86400000 && !(out.full && out.new); t += HOUR) {
+    const p = moonPhase(t).phase;
+    if (!out.full && prev < 0.5 && p >= 0.5) out.full = t;
+    if (!out.new && p < prev - 0.5) out.new = t;
+    prev = p;
+  }
+  return out;
+}
+
 function renderSun() {
   const p = S.station?.lat != null ? { lat: S.station.lat, lon: S.station.lon, name: `Station ${S.station.name}` } : S.loc ? { ...S.loc } : null;
   const el = $('#sunRow'); if (!p) { el.innerHTML = ''; return; }
@@ -305,8 +358,21 @@ function renderSun() {
   const len = Math.round((st.set - st.rise) / MIN);
   el.innerHTML = `<span title="Sonnenaufgang${label} · ${esc(p.name)}">${I('sunrise')}<b>${hhmm(st.rise)}</b></span>`
     + `<span title="Sonnenuntergang${label} · ${esc(p.name)}">${I('sunset')}<b>${hhmm(st.set)}</b></span>`
-    + `<span class="muted" title="Tageslänge">${I('daylen')}${Math.floor(len / 60)} h ${String(len % 60).padStart(2, '0')} min${label}</span>`;
+    + `<span class="muted" title="Tageslänge">${I('daylen')}${Math.floor(len / 60)} h ${String(len % 60).padStart(2, '0')} min${label}</span>`
+    + moonRow(now, p);
 }
+function moonRow(now, p) {
+  const mp = moonPhase(now), ev = moonEvents(now, 48, p.lat, p.lon), today = dayStart(now);
+  const when = (t) => `${dayStart(t) === today ? '' : dayStart(t) === addDays(today, 1) ? 'morgen ' : `${WD[new Date(t).getDay()]} `}${hhmm(t)}`;
+  const rise = ev.find(e => e.rise), set = ev.find(e => !e.rise), nx = nextFullNew(now);
+  const items = [rise && [rise.t, `<span title="Mondaufgang · ${esc(p.name)}">${I('moonrise')}<b>${when(rise.t)}</b></span>`],
+    set && [set.t, `<span title="Monduntergang · ${esc(p.name)}">${I('moonset')}<b>${when(set.t)}</b></span>`]].filter(Boolean).sort((a, b) => a[0] - b[0]).map(x => x[1]);
+  if (!rise && !set) items.push(`<span class="muted">${moonAltitude(now, p.lat, p.lon) > 0 ? 'Mond geht nicht unter' : 'Mond geht nicht auf'}</span>`);
+  const nextTxt = [[nx.full, 'Vollmond'], [nx.new, 'Neumond']].filter(x => x[0]).sort((a, b) => a[0] - b[0]).map(([t, n]) => `${n} ${whenDay(t)}`).join(' · ');
+  return `<span class="moonbreak"></span>` + items.join('')
+    + `<span title="${esc(nextTxt)}">${window.SCENE.moonIcon(mp.phase)}<b>${moonName(mp.phase)}</b><span class="muted">${fmt(mp.frac * 100, 0)} %</span></span>`;
+}
+const whenDay = (t) => `${WD[new Date(t).getDay()]} ${new Date(t).getDate()}.${new Date(t).getMonth() + 1}.`;
 
 // ---------- Hintergrundszene (scene.js) ----------
 let sceneWx = null, sceneRainNow = false, sceneKey = '';
@@ -318,14 +384,16 @@ const SCENE_WORDS = {
   phase: { morgen: 'dawn', tag: 'day', abend: 'dusk', nacht: 'night' },
   sky: { klar: 'clear', heiter: 'partly', bewoelkt: 'cloudy', bewölkt: 'cloudy', nebel: 'fog' },
   precip: { regen: 'rain', schneeregen: 'sleet', schnee: 'snow', hagel: 'hail' },
-  flag: { gewitter: 'storm', heiss: 'hot', heiß: 'hot', wind: 'windy', schneedecke: 'snowCover', frost: 'frost' }
+  flag: { gewitter: 'storm', heiss: 'hot', heiß: 'hot', wind: 'windy', schneedecke: 'snowCover', frost: 'frost' },
+  moon: { sichel: 0.15, halbmond: 0.25, vollmond: 0.5, abnehmend: 0.8, neumond: null }
 };
 function scenePreview() {
   const q = new URLSearchParams(location.search).get('szene'); if (!q) return null;
-  const st = { season: 'summer', phase: 'day', sky: 'clear', precip: null, storm: false, hot: false, windy: false, snowCover: false, frost: false };
+  const st = { season: 'summer', phase: 'day', sky: 'clear', precip: null, storm: false, hot: false, windy: false, snowCover: false, frost: false, moon: 0.35 };
   for (const w of q.toLowerCase().split(',').map(x => x.trim())) {
     for (const k of ['season', 'phase', 'sky', 'precip']) if (SCENE_WORDS[k][w]) st[k] = SCENE_WORDS[k][w];
     if (SCENE_WORDS.flag[w]) st[SCENE_WORDS.flag[w]] = true;
+    if (w in SCENE_WORDS.moon) st.moon = SCENE_WORDS.moon[w];
   }
   if (st.precip === 'snow') st.snowCover = true;
   if (st.precip && st.sky === 'clear') st.sky = 'cloudy';
@@ -349,11 +417,19 @@ function sceneState() {
   return {
     season, phase, sky, precip, storm: cond === 'thunderstorm' || icon === 'thunderstorm',
     hot: temp != null && temp >= 27, windy: icon === 'wind' || (gust != null && gust >= 50),
-    snowCover: precip === 'snow' || (precip === 'sleet' && temp != null && temp <= 1), frost: temp != null && temp <= 0
+    snowCover: precip === 'snow' || (precip === 'sleet' && temp != null && temp <= 1), frost: temp != null && temp <= 0,
+    // Mond nachts nur, wenn er über dem Horizont steht; Phase gerundet, damit die Szene nicht ständig neu gezeichnet wird
+    moon: phase === 'night' && S.loc && moonAltitude(now, S.loc.lat, S.loc.lon) > 0 ? Math.round(moonPhase(now).phase * 40) / 40 : null
   };
+}
+function applyGlass() {
+  document.documentElement.style.setProperty('--ga', String(S.glass / 100));
+  $('#glassVal').textContent = `${S.glass} %`;
+  $('#glassRow').hidden = !S.scene;
 }
 function renderScene() {
   document.body.classList.toggle('scene', !!S.scene);
+  applyGlass();
   const box = $('#scene');
   if (!S.scene) { box.innerHTML = ''; sceneKey = ''; return; }
   const st = scenePreview() || sceneState(), key = JSON.stringify(st);
@@ -1444,8 +1520,10 @@ function initSettings() {
   bind('#setNotify', 'notify'); bind('#setWarnNotify', 'warnNotify'); bind('#setAuto', 'autoLocate');
   bind('#setTheme', 'theme', v => v, applyTheme);
   bind('#setScene', 'scene', v => v, renderScene);
+  bind('#setGlass', 'glass', Number, applyGlass);
+  $('#setGlass').oninput = (e) => { S.glass = Number(e.target.value); applyGlass(); };   // live beim Ziehen, gespeichert bei onchange
   document.querySelectorAll('#themeSeg button').forEach(b => b.onclick = () => { S.theme = b.dataset.theme; save(); applyTheme(); });
-  $('#btnLayout').innerHTML = `${I('layout')} Abschnitte auswählen und sortieren`;
+  $('#btnLayout').innerHTML = `${I('layout')} Startseite: Abschnitte auswählen und sortieren`;
   $('#btnLayout').onclick = () => { $('#dlgSettings').close(); openLayout(false); };
   $('#btnTestNotify').onclick = async () => {
     if (notifyPermission() === 'default') await requestNotifyPermission();
@@ -1459,6 +1537,9 @@ function initPwa() {
   const isStandalone = matchMedia('(display-mode: standalone)').matches || navigator.standalone;
   const ios = /iphone|ipad|ipod/i.test(navigator.userAgent);
   const hint = $('#installHint');
+  // In der Android-App oder als installierte PWA gibt es nichts mehr zu installieren
+  $('#installBox').hidden = NATIVE || isStandalone;
+  $('#notifyHint').hidden = !NATIVE;
   if (isStandalone) hint.textContent = 'Die App ist installiert.';
   else if (ios) hint.textContent = 'iPhone/iPad: In Safari auf „Teilen“ und dann „Zum Home-Bildschirm“ tippen.';
   else hint.textContent = 'Falls der Button nichts tut: im Browsermenü „App installieren“ bzw. „Zum Startbildschirm hinzufügen“ wählen.';

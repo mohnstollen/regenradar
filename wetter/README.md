@@ -1,4 +1,12 @@
-# Wetter-App (PWA) – Version 3.6.0
+# Wetter-App (PWA) – Version 3.7.0
+
+## Neu in 3.7
+- Mond: Auf- und Untergang (die nächsten beiden, mit „morgen“) sowie die aktuelle Mondphase mit beleuchtetem Anteil
+  unter den Sonnenzeiten. Beim Antippen bzw. Darüberfahren erscheinen der nächste Voll- und Neumond.
+  Die Nachtszene zeigt den Mond in seiner echten Phase, und nur dann, wenn er über dem Horizont steht.
+- Einstellungen → Darstellung: Deckkraft der Datenbereiche (20–100 %), damit das Hintergrundbild mehr oder weniger durchscheint
+- Einstellungen neu gegliedert: Darstellung, Standort & Aktualisierung, Benachrichtigungen, Karte.
+  „App installieren“ erscheint nur noch im Browser, solange die App nicht installiert ist.
 
 ## Neu in 3.6
 - Hintergrundbild: eine gezeichnete Landschaft (`scene.js`, reines SVG, keine Bilddateien) passend zu

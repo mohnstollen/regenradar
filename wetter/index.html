@@ -219,8 +219,6 @@
   <dialog id="dlgSettings">
     <form method="dialog">
       <h3>Einstellungen</h3>
-      <h4>Startseite</h4>
-      <button type="button" class="secondary" id="btnLayout"></button>
 
       <h4>Darstellung</h4>
       <label>Hell oder dunkel
@@ -231,6 +229,28 @@
         </select>
       </label>
       <label class="check"><input type="checkbox" id="setScene"> Hintergrundbild passend zu Jahreszeit, Tageszeit und Wetter</label>
+      <label id="glassRow">Deckkraft der Datenbereiche: <b id="glassVal"></b>
+        <input type="range" id="setGlass" min="20" max="100" step="5">
+        <span class="range-ends small muted"><span>Bild scheint stark durch</span><span>deckend</span></span>
+      </label>
+      <button type="button" class="secondary" id="btnLayout"></button>
+
+      <h4>Standort &amp; Aktualisierung</h4>
+      <label class="check"><input type="checkbox" id="setAuto"> Beim Start den GPS-Standort verwenden (sonst zuletzt angezeigten Ort)</label>
+      <label>Daten aktualisieren
+        <select id="setInterval">
+          <option value="5">alle 5 Minuten</option>
+          <option value="10">alle 10 Minuten</option>
+          <option value="15">alle 15 Minuten</option>
+          <option value="30">alle 30 Minuten</option>
+        </select>
+      </label>
+
+      <h4>Benachrichtigungen</h4>
+      <label class="check"><input type="checkbox" id="setNotify"> Wenn Regen naht (DWD-Radarvorhersage)</label>
+      <label class="check"><input type="checkbox" id="setWarnNotify"> Bei neuen DWD-Warnungen</label>
+      <p class="small muted" id="notifyHint" hidden>Die App prüft auch im Hintergrund etwa alle 15 Minuten, wenn sie geschlossen ist.</p>
+      <button type="button" id="btnTestNotify" class="secondary">Test-Benachrichtigung</button>
 
       <h4>Karte</h4>
       <label>Hintergrundkarte
@@ -254,25 +274,12 @@
         <div class="muted" id="satFound"></div>
       </details>
 
-      <h4>Aktualisierung &amp; Hinweise</h4>
-      <label>Aktualisierung
-        <select id="setInterval">
-          <option value="5">alle 5 Minuten</option>
-          <option value="10">alle 10 Minuten</option>
-          <option value="15">alle 15 Minuten</option>
-          <option value="30">alle 30 Minuten</option>
-        </select>
-      </label>
-      <label class="check"><input type="checkbox" id="setNotify"> Benachrichtigen, wenn Regen naht (DWD-Radarvorhersage)</label>
-      <label class="check"><input type="checkbox" id="setWarnNotify"> Benachrichtigen bei neuen DWD-Warnungen</label>
-      <label class="check"><input type="checkbox" id="setAuto"> Beim Start den GPS-Standort verwenden (sonst zuletzt angezeigten Ort)</label>
-
-      <h4>App</h4>
-      <div class="row">
-        <button type="button" id="btnInstall2" class="secondary">App installieren</button>
-        <button type="button" id="btnTestNotify" class="secondary">Test-Benachrichtigung</button>
+      <div id="installBox">
+        <h4>App installieren</h4>
+        <button type="button" id="btnInstall2" class="secondary">Als App installieren</button>
+        <p class="small muted" id="installHint"></p>
       </div>
-      <p class="small muted" id="installHint"></p>
+
       <div class="row end"><button value="close">Fertig</button></div>
     </form>
   </dialog>

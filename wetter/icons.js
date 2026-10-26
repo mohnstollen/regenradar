@@ -36,6 +36,7 @@
   };
 
   const ui = (d) => `<svg class="ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${d}</svg>`;
+  const moonHalf = '<path d="M5.5 17a6.5 6.5 0 0 1 13 0z" fill="#e8e3cf" stroke="#a9a28a" stroke-width="1"/><path d="M8.5 15.2a1.1 1.1 0 1 0 0 .01M14.3 13.6a1.4 1.4 0 1 0 0 .01" stroke="#b9b29a" stroke-width="1"/><path d="M2 20.5h20"/>';
   const sunHalf = '<path d="M5.5 17a6.5 6.5 0 0 1 13 0z" fill="#f5b301" stroke="#e0a000" stroke-width="1"/><path d="M2 20.5h20"/>';
   const starPath = 'M12 2.8l2.8 5.8 6.4.9-4.6 4.5 1.1 6.3L12 17.3l-5.7 3 1.1-6.3-4.6-4.5 6.4-.9z';
   const UI = {
@@ -66,6 +67,8 @@
     rainIco: ui('<path d="M7 14h10a4 4 0 0 0 .5-8A6 6 0 0 0 6 5.5 4.3 4.3 0 0 0 7 14z"/><path d="M9 17l-1 3"/><path d="M13 17l-1 3"/><path d="M17 17l-1 3"/>'),
     sunrise: ui(sunHalf + '<path d="M12 2.5v6"/><path d="M9.3 5.2L12 2.5l2.7 2.7"/>'),
     sunset: ui(sunHalf + '<path d="M12 2.5v6"/><path d="M9.3 5.8L12 8.5l2.7-2.7"/>'),
+    moonrise: ui(moonHalf + '<path d="M12 2.5v6"/><path d="M9.3 5.2L12 2.5l2.7 2.7"/>'),
+    moonset: ui(moonHalf + '<path d="M12 2.5v6"/><path d="M9.3 5.8L12 8.5l2.7-2.7"/>'),
     daylen: ui('<circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/>'),
     clock: ui('<circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/>'),
     flower: ui('<circle cx="12" cy="9" r="2.2"/><path d="M12 6.8a2.6 2.6 0 1 1 2.2-3.9M14.2 9a2.6 2.6 0 1 1 1.4 4.3M12 11.2a2.6 2.6 0 1 1-2.6 3.3M9.8 9a2.6 2.6 0 1 1-1.4-4.3"/><path d="M12 13v8"/><path d="M12 18c-2 0-3.5-1-4-3"/>'),

@@ -2,7 +2,7 @@
  * window.SCENE.svg(state) liefert das SVG, state = {
  *   season: 'spring' | 'summer' | 'autumn' | 'winter',  phase: 'dawn' | 'day' | 'dusk' | 'night',
  *   sky: 'clear' | 'partly' | 'cloudy' | 'fog',  precip: null | 'rain' | 'sleet' | 'snow' | 'hail',
- *   storm, hot, windy, snowCover, frost: boolean }
+ *   storm, hot, windy, snowCover, frost: boolean,  moon: null | Mondphase 0–1 (0 Neumond, 0,5 Vollmond), wenn er über dem Horizont steht }
  * Animationen (Wolken, Regen, Schnee, Laub, Blitz) stehen als .sc-* in style.css.
  */
 (() => {
@@ -34,6 +34,20 @@
     winter: { far: '#a7b4bf', hill: '#8f9a7f', hill2: '#7b8869', meadow: ['#93a07f', '#717e5f'], crowns: ['#2c5a3f'] }
   };
   const SNOW = { far: '#e6ecf3', hill: '#f1f5f9', hill2: '#e3eaf2', meadow: ['#f6f9fc', '#dde6ef'] };
+
+  // ---------- Mond ----------
+  // Beleuchteter Teil: Außenrand als Halbkreis, Schattengrenze als Halbellipse (zunehmend rechts hell, abnehmend links – Nordhalbkugel)
+  function moonLit(phase, cx, cy, R) {
+    const waxing = phase < 0.5, k = waxing ? phase * 2 : (1 - phase) * 2;   // 0 = neu, 1 = voll
+    const rx = Math.abs(1 - 2 * k) * R, gibbous = k > 0.5;
+    const d = `M${f(cx)} ${f(cy - R)} A${R} ${R} 0 0 1 ${f(cx)} ${f(cy + R)} A${f(rx)} ${R} 0 0 ${gibbous ? 1 : 0} ${f(cx)} ${f(cy - R)} Z`;
+    return d;   // abnehmend: Spiegelung per transform in moon()
+  }
+  function moon(phase, cx, cy, R, lit, dark) {
+    const waxing = phase < 0.5, tr = waxing ? '' : ` transform="translate(${f(2 * cx)} 0) scale(-1 1)"`;
+    return `<circle cx="${f(cx)}" cy="${f(cy)}" r="${R}" fill="${dark}"/><path d="${moonLit(phase, cx, cy, R)}" fill="${lit}"${tr}/>`;
+  }
+  const moonIcon = (phase) => `<svg class="ico" viewBox="0 0 24 24" aria-hidden="true">${moon(phase, 12, 12, 9, '#f2d16b', 'rgba(140,150,165,.35)')}<circle cx="12" cy="12" r="9" fill="none" stroke="#a9a28a" stroke-width="1"/></svg>`;
 
   // ---------- Formen ----------
   const ridge = (r, y0, amp, n) => {   // Hügelkamm als geglätteter Pfad
@@ -87,7 +101,10 @@
     if (night && clearish && !st.precip) {
       let stars = ''; for (let i = 0; i < 90; i++) stars += `<circle cx="${f(r() * W)}" cy="${f(r() * HORIZON * 0.8)}" r="${f(0.8 + r() * 1.8)}" fill="#fff" opacity="${f(0.35 + r() * 0.6)}"/>`;
       o += `<g class="sc-stars">${stars}</g>`;
-      o += `<g><circle cx="820" cy="300" r="70" fill="#f3efe0"/><circle cx="850" cy="282" r="64" fill="${skyCols[0]}"/><circle cx="820" cy="300" r="150" fill="#f3efe0" opacity=".06"/></g>`;
+      if (st.moon != null && Math.min(st.moon, 1 - st.moon) > 0.03) {
+        const full = 1 - Math.abs(0.5 - st.moon) * 2;   // Lichtschein wächst mit der Phase
+        o += `<circle cx="820" cy="300" r="190" fill="#f3efe0" opacity="${f(0.03 + 0.07 * full)}"/>${moon(st.moon, 820, 300, 70, '#f3efe0', 'rgba(20,30,60,.35)')}`;
+      }
     } else if (!night && !st.precip && st.sky !== 'fog' && st.sky !== 'cloudy' && !st.storm) {
       if (low) {
         const sx = st.phase === 'dawn' ? 330 : 870;
@@ -184,5 +201,5 @@
     return o + '</svg>';
   }
 
-  window.SCENE = { svg };
+  window.SCENE = { svg, moonIcon };
 })();

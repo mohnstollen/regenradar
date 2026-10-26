@@ -3,8 +3,8 @@
   --primary: #0b5cab; --temp: #e8590c; --feels: #f08c00; --dew: #12b886; --rain: #3d8bfd; --sun: #f2b705; --radius: 14px;
 }
 /* Hell/Dunkel: data-theme setzt app.js (Einstellung „Darstellung“, bei „Wie System“ nach prefers-color-scheme) */
-:root { color-scheme: light; --glass: rgba(255,255,255,.84); }
-:root[data-theme=dark] { color-scheme: dark; --glass: rgba(24,33,43,.84); --bg: #0f151c; --card: #18212b; --text: #e6edf3; --muted: #93a1b0; --line: #2a3542; --line2: #3a4655; }
+:root { color-scheme: light; --ga: .84; --glass: rgba(255,255,255,var(--ga)); }
+:root[data-theme=dark] { color-scheme: dark; --glass: rgba(24,33,43,var(--ga)); --bg: #0f151c; --card: #18212b; --text: #e6edf3; --muted: #93a1b0; --line: #2a3542; --line2: #3a4655; }
 * { box-sizing: border-box; }
 html, body { margin: 0; }
 body { font-family: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif; background: var(--bg); color: var(--text); }
@@ -42,6 +42,10 @@ a { color: var(--primary); }
 .sunrow { display: flex; flex-wrap: wrap; gap: .3rem 1.1rem; margin: .75rem 0 0; }
 .sunrow span, .now-details span { display: inline-flex; align-items: center; gap: .3rem; }
 .sunrow .ico { width: 1.45em; height: 1.45em; }
+.sunrow .moonbreak { flex-basis: 100%; height: 0; }
+.sunrow .muted { margin-left: .15rem; }
+#setGlass { width: 100%; margin: .4rem 0 0; accent-color: var(--primary); }
+.range-ends { display: flex; justify-content: space-between; }
 .sunrow b, .now-details b { font-weight: 600; }
 .now-details { display: flex; flex-wrap: wrap; gap: .35rem 1.1rem; margin: .55rem 0 .55rem; }
 .station-btn { display: inline-flex; align-items: center; gap: .35rem; max-width: 100%; background: var(--bg); color: var(--muted); border: 1px solid var(--line2); border-radius: 999px; padding: .3rem .7rem; cursor: pointer; font: inherit; text-align: left; }
