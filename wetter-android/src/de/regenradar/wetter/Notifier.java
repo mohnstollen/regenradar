@@ -57,6 +57,24 @@ final class Notifier {
         if (warn && contains(seen, tag)) return true;
         if (tag.equals("rain") && now - p.getLong("lastRain", 0) < RAIN_PAUSE) return true;
 
+        post(c, tag, title, body, warn);
+
+        SharedPreferences.Editor e = p.edit();
+        if (warn) {
+            seen.put(tag);
+            while (seen.length() > MAX_SEEN) seen.remove(0);
+            e.putString("seenWarnings", seen.toString());
+        } else if (tag.equals("rain")) {
+            e.putLong("lastRain", now);
+        }
+        e.apply();
+        return true;
+    }
+
+    /** Zeigt bzw. ersetzt die Benachrichtigung mit diesem Tag – ohne Duplikatsperre. */
+    static void post(Context c, String tag, String title, String body, boolean warn) {
+        if (!allowed(c)) return;
+        long now = System.currentTimeMillis();
         NotificationManager nm = c.getSystemService(NotificationManager.class);
         createChannels(nm);
         Intent open = new Intent(c, MainActivity.class).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK | Intent.FLAG_ACTIVITY_SINGLE_TOP);
@@ -74,17 +92,10 @@ final class Notifier {
             .setWhen(now)
             .setShowWhen(true);
         nm.notify(tag, 1, b.build());
+    }
 
-        SharedPreferences.Editor e = p.edit();
-        if (warn) {
-            seen.put(tag);
-            while (seen.length() > MAX_SEEN) seen.remove(0);
-            e.putString("seenWarnings", seen.toString());
-        } else if (tag.equals("rain")) {
-            e.putLong("lastRain", now);
-        }
-        e.apply();
-        return true;
+    static void cancel(Context c, String tag) {
+        c.getSystemService(NotificationManager.class).cancel(tag, 1);
     }
 
     @SuppressWarnings("deprecation")

@@ -11,8 +11,8 @@
  * Pollen:      DWD Pollenflug-Gefahrenindex, außerhalb DE Open-Meteo/CAMS
  */
 'use strict';
-const APP_VERSION = '3.9.0';
-const WIZARD_VERSION = '3.5';
+const APP_VERSION = '3.11.0';
+const WIZARD_VERSION = '3.11';
 
 // ---------- Endpunkte ----------
 const BS = 'https://api.brightsky.dev';
@@ -91,7 +91,8 @@ const DEFAULTS = {
   loc: null, station: null, favs: [], basemap: 'bm_grau', sat: 'auto', satDay: '', satNight: '', intervalMin: 10,
   notify: false, warnNotify: true, autoLocate: true, mapMode: 'radar', model: 'icon_d2', rangeH: 12,
   pollen: POLLEN.map(p => p.k), pollenRegion: 'auto', pollenHideZero: false,
-  showFeels: true, showDew: true, layout: null, layoutSeen: [], wizardFor: null, theme: 'system', scene: true, glass: 84
+  showFeels: true, showDew: true, layout: null, layoutSeen: [], wizardFor: null, theme: 'system', scene: true, glass: 84,
+  rainRadius: 10, rainMin: 'all', stormNotify: false, stormRadius: 50
 };
 let S = (() => {
   try { const s = Object.assign({}, DEFAULTS, JSON.parse(localStorage.getItem(LS) || '{}')); s.favs = Array.isArray(s.favs) ? s.favs : []; return s; }
@@ -108,7 +109,8 @@ const NATIVE = / WetterApp-Android\//.test(navigator.userAgent);
 const native = (cmd, ...args) => { try { return JSON.parse(prompt('wetterapp:' + JSON.stringify([cmd, ...args])) ?? 'null'); } catch { return null; } };
 // Standort und Schalter für die Hintergrundprüfung (Warnungen, Regen) der App
 function syncNative() {
-  if (NATIVE) native('sync', { lat: S.loc?.lat ?? null, lon: S.loc?.lon ?? null, name: S.loc?.name ?? '', notify: S.notify, warnNotify: S.warnNotify, theme: S.theme });
+  if (NATIVE) native('sync', { lat: S.loc?.lat ?? null, lon: S.loc?.lon ?? null, name: S.loc?.name ?? '', notify: S.notify, warnNotify: S.warnNotify, theme: S.theme,
+    rainRadius: S.rainRadius, rainMin: S.rainMin, stormNotify: S.stormNotify, stormRadius: S.stormRadius });
 }
 const notifyPermission = () => NATIVE ? native('permission') : ('Notification' in window ? Notification.permission : 'denied');
 function requestNotifyPermission() {
@@ -216,8 +218,11 @@ let layoutDraft = null, layoutWasOff = [], afterLayout = null;
 function openLayout(first = false) {
   layoutDraft = S.layout.map(l => ({ ...l }));
   layoutWasOff = S.layout.filter(l => !l.on).map(l => l.id);
-  $('#layoutTitle').textContent = first ? (isUpgrade ? `Neu in Version ${WIZARD_VERSION}: Darstellung und Startseite` : 'Willkommen! Darstellung und Startseite einrichten') : 'Startseite anpassen';
+  $('#layoutTitle').textContent = first ? (isUpgrade ? `Neu in Version ${WIZARD_VERSION}: Benachrichtigungen einrichten` : 'Willkommen! App einrichten') : 'Startseite anpassen';
   $('#themePick').hidden = !first;
+  $('#wizNotify').hidden = !first;
+  $('#layoutHead').hidden = !first;
+  syncNotifyControls();
   $('#gripHint').innerHTML = I('grip');
   renderLayoutList();
   $('#dlgLayout').showModal();
@@ -1400,6 +1405,7 @@ function renderNowcast(r) {
   $('#ncInfo').textContent = (total >= 0.05 ? `Summe in 2 h ca. ${fmt(total)} mm` : 'Kein nennenswerter Niederschlag am Standort erwartet') + ` · DWD-Radar mit Vorhersage, Bild ${hhmm(r.t)} Uhr`;
 }
 async function rainNotify(title, body) {
+  if (NATIVE) return;   // die Android-App meldet Regen selbst (Umkreis, Stärke, Richtung) – auch im Hintergrund
   const last = Number(localStorage.getItem(LS_RAIN) || 0);
   if (Date.now() - last < 60 * MIN) return;
   if (await notify(title, body, 'rain', 'rain')) localStorage.setItem(LS_RAIN, String(Date.now()));
@@ -1505,9 +1511,6 @@ function initSettings() {
     const el = $(sel);
     if (el.type === 'checkbox') el.checked = S[key]; else el.value = String(S[key] ?? '');
     el.onchange = async () => {
-      if (el.type === 'checkbox' && el.checked && (key === 'notify' || key === 'warnNotify')) {
-        if (await requestNotifyPermission() !== 'granted') { el.checked = false; toast('Benachrichtigungen nicht erlaubt.'); return; }
-      }
       S[key] = el.type === 'checkbox' ? el.checked : conv(el.value); save(); after?.();
     };
   };
@@ -1517,7 +1520,8 @@ function initSettings() {
   bind('#setSatDay', 'satDay', v => v.trim(), satChanged);
   bind('#setSatNight', 'satNight', v => v.trim(), satChanged);
   bind('#setInterval', 'intervalMin', Number, schedule);
-  bind('#setNotify', 'notify'); bind('#setWarnNotify', 'warnNotify'); bind('#setAuto', 'autoLocate');
+  bind('#setAuto', 'autoLocate');
+  initNotifyControls();
   bind('#setTheme', 'theme', v => v, applyTheme);
   bind('#setScene', 'scene', v => v, renderScene);
   bind('#setGlass', 'glass', Number, applyGlass);
@@ -1531,6 +1535,28 @@ function initSettings() {
   };
 }
 
+// Benachrichtigungen: Einstellungen und Einrichtungsassistent teilen sich die Bedienelemente (data-key).
+// Umkreis, Stärke und Unwetter im Umkreis gibt es nur in der Android-App (Hintergrundprüfung).
+const NOTIFY_KEYS = ['notify', 'warnNotify', 'stormNotify'];
+function initNotifyControls() {
+  $('#wizNotify').appendChild($('#notifyBlock').cloneNode(true)).removeAttribute('id');
+  document.querySelectorAll('.notify-block [data-key]').forEach(el => el.onchange = async () => {
+    const key = el.dataset.key;
+    if (el.type === 'checkbox' && el.checked && NOTIFY_KEYS.includes(key) && await requestNotifyPermission() !== 'granted') {
+      el.checked = false; toast('Benachrichtigungen nicht erlaubt.'); return;
+    }
+    S[key] = el.type === 'checkbox' ? el.checked : 'num' in el.dataset ? Number(el.value) : el.value;
+    save(); syncNotifyControls();
+  });
+  syncNotifyControls();
+}
+function syncNotifyControls() {
+  document.querySelectorAll('.notify-block [data-key]').forEach(el => { if (el.type === 'checkbox') el.checked = !!S[el.dataset.key]; else el.value = String(S[el.dataset.key]); });
+  document.querySelectorAll('.notify-block .native-only').forEach(el => { el.hidden = !NATIVE; });
+  document.querySelectorAll('.notify-block .browser-only').forEach(el => { el.hidden = NATIVE; });
+  document.querySelectorAll('.notify-block [data-show]').forEach(el => { el.hidden = !NATIVE || !S[el.dataset.show]; });
+}
+
 // ---------- PWA ----------
 let installEvt = null;
 function initPwa() {
@@ -1539,7 +1565,7 @@ function initPwa() {
   const hint = $('#installHint');
   // In der Android-App oder als installierte PWA gibt es nichts mehr zu installieren
   $('#installBox').hidden = NATIVE || isStandalone;
-  $('#notifyHint').hidden = !NATIVE;
+  $('#updateBox').hidden = !NATIVE;
   if (isStandalone) hint.textContent = 'Die App ist installiert.';
   else if (ios) hint.textContent = 'iPhone/iPad: In Safari auf „Teilen“ und dann „Zum Home-Bildschirm“ tippen.';
   else hint.textContent = 'Falls der Button nichts tut: im Browsermenü „App installieren“ bzw. „Zum Startbildschirm hinzufügen“ wählen.';

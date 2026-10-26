@@ -1,5 +1,11 @@
 # Wetter-App als Android-APK
 
+**Download der neuesten Version:** https://github.com/mohnstollen/regenradar/releases/latest/download/wetter.apk
+
+Der Link zeigt immer auf das neueste Release. Der Workflow `.github/workflows/release-apk.yml` legt es automatisch an,
+sobald eine neue `wetter-<version>.apk` auf `main` landet. Ein manueller Start ist unter Actions → „APK
+veröffentlichen“ → „Run workflow“ möglich. Die APK installiert sich als Update über eine vorhandene Version.
+
 Diese WebView-Hülle packt die PWA aus `../wetter` in eine APK. Die Web-Dateien liegen in der APK
 und werden unter `https://appassets.androidplatform.net/` ausgeliefert. Das ist ein sicherer Kontext,
 deshalb funktionieren GPS, `localStorage` und der Service Worker mit dem Offline-Speicher.
@@ -19,11 +25,25 @@ eingebetteten Seiten wie Windy.
 
 - Kanäle „Regen in Kürze“ und „DWD-Warnungen“, beide einzeln in den Android-Einstellungen abschaltbar
 - Ab Android 13 fragt die App beim Einschalten in den Einstellungen nach der Berechtigung
-- **Auch bei geschlossener App:** `CheckService` prüft etwa alle 15 Minuten über Bright Sky auf neue
-  DWD-Warnungen und auf Regen am zuletzt angezeigten Ort (`/alerts` und `/radar`, gleiche Schwellen wie in
-  `app.js`). Den genauen Zeitpunkt legt Android fest, im Energiesparmodus kann es später werden.
-- Doppelte Meldungen verhindert die App selbst: Jede Warnung kommt nur einmal, der Regenhinweis höchstens
-  einmal pro Stunde, egal ob er aus der offenen App oder aus der Hintergrundprüfung stammt.
+- **Auch bei geschlossener App:** `CheckService` prüft etwa alle 15 Minuten am zuletzt angezeigten Ort.
+  Den genauen Zeitpunkt legt Android fest, im Energiesparmodus kann es später werden.
+- **Regen im Anmarsch** (`RainAlert`):
+  - Gemeldet wird Regen, der jetzt im eingestellten Umkreis (5–50 km) liegt und den Standort laut
+    DWD-Radarvorhersage (2 h) erreicht. Beispiel: „Mäßiger Regen nähert sich aus Westen und erreicht Dich in
+    ca. 30 min (18:30 Uhr).“
+  - Stärke nach DWD: leicht unter 2,5 mm/h, mäßig bis 10 mm/h, stark darüber, gemessen in den ersten 30 Minuten
+    am Standort. Auf Wunsch wird erst ab mäßigem oder starkem Regen gemeldet.
+  - Die Zugrichtung ergibt sich aus der Verschiebung der Regenfläche zwischen jetzt und der Vorhersage für +30 min.
+  - Eine Benachrichtigung je Regengebiet. Sie wird bei ≤ 30 und ≤ 10 Minuten aktualisiert, solange Regen im
+    Anmarsch ist, prüft die App dafür etwa alle 5 Minuten. Zieht der Regen doch vorbei, verschwindet die
+    Meldung. Beginnt es zu regnen, ebenfalls.
+- **DWD-Warnungen für den Ort** (Bright Sky `/alerts`): alle Stufen, jede Warnung einmal. Bei Unwettern
+  (rot/violett) kommt zusätzlich eine Meldung, wenn die Warnung aufgehoben ist.
+- **Unwetter im Umkreis** (`StormAlert`): Warnungen der Stufen Unwetter und extremes Unwetter für Landkreise
+  im Umkreis von 25–100 km aus dem DWD-Geodienst (WFS `dwd:Warnungen_Landkreise`), mit Entfernung und Richtung,
+  z. B. „Landkreis Forchheim, 15 km nördlich, bis 20:00 Uhr“. Ist die Warnung nicht mehr aktiv, wird dieselbe
+  Benachrichtigung durch „Aufgehoben: …“ ersetzt. Das eigene Gebiet meldet bereits die Ortswarnung.
+- Die Web-App meldet in der Android-App keinen Regen mehr selbst; das übernimmt die App mit den Optionen oben.
 
 ## Widgets
 
