@@ -1,5 +1,11 @@
 # Wetter-App als Android-APK
 
+**Download der neuesten Version:** https://github.com/mohnstollen/regenradar/releases/latest/download/wetter.apk
+
+Der Link zeigt immer auf das neueste Release. Der Workflow `.github/workflows/release-apk.yml` legt es automatisch an,
+sobald eine neue `wetter-<version>.apk` auf `main` landet. Ein manueller Start ist unter Actions → „APK
+veröffentlichen“ → „Run workflow“ möglich. Die APK installiert sich als Update über eine vorhandene Version.
+
 Diese WebView-Hülle packt die PWA aus `../wetter` in eine APK. Die Web-Dateien liegen in der APK
 und werden unter `https://appassets.androidplatform.net/` ausgeliefert. Das ist ein sicherer Kontext,
 deshalb funktionieren GPS, `localStorage` und der Service Worker mit dem Offline-Speicher.

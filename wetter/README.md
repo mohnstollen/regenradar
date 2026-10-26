@@ -1,4 +1,9 @@
-# Wetter-App (PWA) – Version 3.10.0
+# Wetter-App (PWA) – Version 3.11.0
+
+## Neu in 3.11
+- Benachrichtigungen lassen sich schon im Einrichtungsassistenten beim ersten Start festlegen, in der Android-App
+  mit Regen-Umkreis, Mindeststärke und Unwettern im Umkreis. Wer schon installiert hat, sieht den Assistenten einmal.
+- Android-App: fester Download-Link auf die neueste Version (GitHub-Release `wetter.apk`), auch unter Einstellungen → App
 
 ## Neu in 3.10
 - Android-App: Regen-Benachrichtigung mit Umkreis (5–50 km), Mindeststärke, Zugrichtung und Ankunftszeit,

@@ -160,6 +160,10 @@
           <button type="button" data-theme="system">Wie System</button>
         </div>
       </div>
+      <div class="wiz-notify" id="wizNotify" hidden>
+        <h4>Benachrichtigungen</h4>
+      </div>
+      <h4 id="layoutHead" hidden>Startseite</h4>
       <p class="small muted">Wähle, welche Abschnitte angezeigt werden. Zum Verschieben am Griff <span id="gripHint"></span> ziehen oder die Pfeile nutzen.</p>
       <ul id="layoutList" class="layout-list"></ul>
       <div class="row"><button type="button" class="secondary" id="btnLayoutReset">Standard</button></div>
@@ -247,10 +251,11 @@
       </label>
 
       <h4>Benachrichtigungen</h4>
-      <label class="check"><input type="checkbox" id="setNotify"> Wenn Regen naht (DWD-Radarvorhersage)</label>
-      <div class="subopts" id="rainOpts" hidden>
+      <div class="notify-block" id="notifyBlock">
+      <label class="check"><input type="checkbox" data-key="notify"> Wenn Regen naht (DWD-Radarvorhersage)</label>
+      <div class="subopts" data-show="notify" hidden>
         <label>Regen im Umkreis von
-          <select id="setRainRadius">
+          <select data-key="rainRadius" data-num>
             <option value="5">5 km</option>
             <option value="10">10 km</option>
             <option value="25">25 km</option>
@@ -258,7 +263,7 @@
           </select>
         </label>
         <label>Melden bei
-          <select id="setRainMin">
+          <select data-key="rainMin">
             <option value="all">jedem Regen</option>
             <option value="moderate">mäßigem und starkem Regen</option>
             <option value="heavy">nur starkem Regen</option>
@@ -266,18 +271,20 @@
         </label>
         <p class="small muted">Nur Regen, der Dich laut Vorhersage erreicht – mit Richtung und Ankunftszeit, aktualisiert bei 30 und 10 Minuten. Mäßig ab 2,5 mm/h, stark ab 10 mm/h.</p>
       </div>
-      <label class="check"><input type="checkbox" id="setWarnNotify"> Bei neuen DWD-Warnungen für meinen Ort</label>
-      <label class="check" id="stormRow" hidden><input type="checkbox" id="setStormNotify"> Bei Unwettern (rot/violett) im Umkreis, mit Meldung der Aufhebung</label>
-      <div class="subopts" id="stormOpts" hidden>
+      <label class="check"><input type="checkbox" data-key="warnNotify"> Bei neuen DWD-Warnungen für meinen Ort</label>
+      <label class="check native-only" hidden><input type="checkbox" data-key="stormNotify"> Bei Unwettern (rot/violett) im Umkreis, mit Meldung der Aufhebung</label>
+      <div class="subopts" data-show="stormNotify" hidden>
         <label>Unwetter im Umkreis von
-          <select id="setStormRadius">
+          <select data-key="stormRadius" data-num>
             <option value="25">25 km</option>
             <option value="50">50 km</option>
             <option value="100">100 km</option>
           </select>
         </label>
       </div>
-      <p class="small muted" id="notifyHint" hidden>Die App prüft auch im Hintergrund etwa alle 15 Minuten, wenn sie geschlossen ist.</p>
+      <p class="small muted native-only" hidden>Die App prüft auch im Hintergrund etwa alle 15 Minuten, wenn sie geschlossen ist.</p>
+      <p class="small muted browser-only" hidden>Im Browser kommen Benachrichtigungen nur, solange die Seite geöffnet ist.</p>
+      </div>
       <button type="button" id="btnTestNotify" class="secondary">Test-Benachrichtigung</button>
 
       <h4>Karte</h4>
@@ -306,6 +313,11 @@
         <h4>App installieren</h4>
         <button type="button" id="btnInstall2" class="secondary">Als App installieren</button>
         <p class="small muted" id="installHint"></p>
+      </div>
+      <div id="updateBox" hidden>
+        <h4>App</h4>
+        <p class="small"><a href="https://github.com/mohnstollen/regenradar/releases/latest/download/wetter.apk">Neueste Version der App herunterladen</a>
+          <span class="muted">– installiert sich als Update, Einstellungen bleiben erhalten.</span></p>
       </div>
 
       <div class="row end"><button value="close">Fertig</button></div>

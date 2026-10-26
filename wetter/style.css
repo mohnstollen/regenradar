@@ -84,6 +84,7 @@ a { color: var(--primary); }
 .seg button.active { background: var(--primary); color: #fff; }
 .theme-pick { margin-bottom: .8rem; }
 .theme-pick h4 { margin: .2rem 0 .4rem; }
+.wiz-notify h4, #layoutHead { margin: .8rem 0 .3rem; }
 .seg.range { margin: .6rem 0 .1rem; }
 .seg.range .short { display: none; }
 @media (max-width: 480px) { .seg.range .long { display: none; } .seg.range .short { display: inline; } .seg.range button { padding: .35rem .55rem; } }

@@ -1,0 +1,43 @@
+# Veröffentlicht die Android-APK als GitHub-Release, sobald eine neue Version auf main landet.
+# Fester Link auf die jeweils neueste Version:
+#   https://github.com/mohnstollen/regenradar/releases/latest/download/wetter.apk
+name: APK veröffentlichen
+
+on:
+  push:
+    branches: [main]
+    paths: ['wetter-android/wetter-*.apk']
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Version bestimmen
+        id: v
+        run: |
+          apk=$(ls wetter-android/wetter-*.apk | sort -V | tail -1)
+          ver=${apk##*/wetter-}; ver=${ver%.apk}
+          echo "apk=$apk" >> "$GITHUB_OUTPUT"
+          echo "ver=$ver" >> "$GITHUB_OUTPUT"
+          # Release-Notizen: Abschnitt „Neu in <Haupt.Neben>“ aus wetter/README.md
+          awk -v h="## Neu in ${ver%.*}" '$0 == h {on = 1; next} /^## / {on = 0} on' wetter/README.md > notes.md
+          printf '\nDownload: [wetter.apk](https://github.com/%s/releases/latest/download/wetter.apk) – installiert sich als Update über eine vorhandene Version.\n' "$GITHUB_REPOSITORY" >> notes.md
+
+      - name: Release anlegen oder aktualisieren
+        env:
+          GH_TOKEN: ${{ github.token }}
+          APK: ${{ steps.v.outputs.apk }}
+          VER: ${{ steps.v.outputs.ver }}
+        run: |
+          cp "$APK" wetter.apk
+          if gh release view "v$VER" > /dev/null 2>&1; then
+            gh release upload "v$VER" wetter.apk "$APK" --clobber
+          else
+            gh release create "v$VER" wetter.apk "$APK" --title "Wetter $VER" --notes-file notes.md --latest
+          fi

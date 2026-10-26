@@ -11,8 +11,8 @@
  * Pollen:      DWD Pollenflug-Gefahrenindex, außerhalb DE Open-Meteo/CAMS
  */
 'use strict';
-const APP_VERSION = '3.10.0';
-const WIZARD_VERSION = '3.5';
+const APP_VERSION = '3.11.0';
+const WIZARD_VERSION = '3.11';
 
 // ---------- Endpunkte ----------
 const BS = 'https://api.brightsky.dev';
@@ -218,8 +218,11 @@ let layoutDraft = null, layoutWasOff = [], afterLayout = null;
 function openLayout(first = false) {
   layoutDraft = S.layout.map(l => ({ ...l }));
   layoutWasOff = S.layout.filter(l => !l.on).map(l => l.id);
-  $('#layoutTitle').textContent = first ? (isUpgrade ? `Neu in Version ${WIZARD_VERSION}: Darstellung und Startseite` : 'Willkommen! Darstellung und Startseite einrichten') : 'Startseite anpassen';
+  $('#layoutTitle').textContent = first ? (isUpgrade ? `Neu in Version ${WIZARD_VERSION}: Benachrichtigungen einrichten` : 'Willkommen! App einrichten') : 'Startseite anpassen';
   $('#themePick').hidden = !first;
+  $('#wizNotify').hidden = !first;
+  $('#layoutHead').hidden = !first;
+  syncNotifyControls();
   $('#gripHint').innerHTML = I('grip');
   renderLayoutList();
   $('#dlgLayout').showModal();
@@ -1508,9 +1511,6 @@ function initSettings() {
     const el = $(sel);
     if (el.type === 'checkbox') el.checked = S[key]; else el.value = String(S[key] ?? '');
     el.onchange = async () => {
-      if (el.type === 'checkbox' && el.checked && (key === 'notify' || key === 'warnNotify' || key === 'stormNotify')) {
-        if (await requestNotifyPermission() !== 'granted') { el.checked = false; toast('Benachrichtigungen nicht erlaubt.'); return; }
-      }
       S[key] = el.type === 'checkbox' ? el.checked : conv(el.value); save(); after?.();
     };
   };
@@ -1520,10 +1520,8 @@ function initSettings() {
   bind('#setSatDay', 'satDay', v => v.trim(), satChanged);
   bind('#setSatNight', 'satNight', v => v.trim(), satChanged);
   bind('#setInterval', 'intervalMin', Number, schedule);
-  bind('#setNotify', 'notify', v => v, syncNotifyRows); bind('#setWarnNotify', 'warnNotify'); bind('#setAuto', 'autoLocate');
-  bind('#setRainRadius', 'rainRadius', Number); bind('#setRainMin', 'rainMin');
-  bind('#setStormNotify', 'stormNotify', v => v, syncNotifyRows); bind('#setStormRadius', 'stormRadius', Number);
-  syncNotifyRows();
+  bind('#setAuto', 'autoLocate');
+  initNotifyControls();
   bind('#setTheme', 'theme', v => v, applyTheme);
   bind('#setScene', 'scene', v => v, renderScene);
   bind('#setGlass', 'glass', Number, applyGlass);
@@ -1537,11 +1535,26 @@ function initSettings() {
   };
 }
 
-// Zusatzoptionen der Benachrichtigungen gibt es nur in der Android-App (Hintergrundprüfung)
-function syncNotifyRows() {
-  $('#rainOpts').hidden = !NATIVE || !S.notify;
-  $('#stormRow').hidden = !NATIVE;
-  $('#stormOpts').hidden = !NATIVE || !S.stormNotify;
+// Benachrichtigungen: Einstellungen und Einrichtungsassistent teilen sich die Bedienelemente (data-key).
+// Umkreis, Stärke und Unwetter im Umkreis gibt es nur in der Android-App (Hintergrundprüfung).
+const NOTIFY_KEYS = ['notify', 'warnNotify', 'stormNotify'];
+function initNotifyControls() {
+  $('#wizNotify').appendChild($('#notifyBlock').cloneNode(true)).removeAttribute('id');
+  document.querySelectorAll('.notify-block [data-key]').forEach(el => el.onchange = async () => {
+    const key = el.dataset.key;
+    if (el.type === 'checkbox' && el.checked && NOTIFY_KEYS.includes(key) && await requestNotifyPermission() !== 'granted') {
+      el.checked = false; toast('Benachrichtigungen nicht erlaubt.'); return;
+    }
+    S[key] = el.type === 'checkbox' ? el.checked : 'num' in el.dataset ? Number(el.value) : el.value;
+    save(); syncNotifyControls();
+  });
+  syncNotifyControls();
+}
+function syncNotifyControls() {
+  document.querySelectorAll('.notify-block [data-key]').forEach(el => { if (el.type === 'checkbox') el.checked = !!S[el.dataset.key]; else el.value = String(S[el.dataset.key]); });
+  document.querySelectorAll('.notify-block .native-only').forEach(el => { el.hidden = !NATIVE; });
+  document.querySelectorAll('.notify-block .browser-only').forEach(el => { el.hidden = NATIVE; });
+  document.querySelectorAll('.notify-block [data-show]').forEach(el => { el.hidden = !NATIVE || !S[el.dataset.show]; });
 }
 
 // ---------- PWA ----------
@@ -1552,7 +1565,7 @@ function initPwa() {
   const hint = $('#installHint');
   // In der Android-App oder als installierte PWA gibt es nichts mehr zu installieren
   $('#installBox').hidden = NATIVE || isStandalone;
-  $('#notifyHint').hidden = !NATIVE;
+  $('#updateBox').hidden = !NATIVE;
   if (isStandalone) hint.textContent = 'Die App ist installiert.';
   else if (ios) hint.textContent = 'iPhone/iPad: In Safari auf „Teilen“ und dann „Zum Home-Bildschirm“ tippen.';
   else hint.textContent = 'Falls der Button nichts tut: im Browsermenü „App installieren“ bzw. „Zum Startbildschirm hinzufügen“ wählen.';
