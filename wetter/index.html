@@ -13,10 +13,14 @@
   <link rel="manifest" href="manifest.webmanifest">
   <link rel="icon" type="image/png" href="icons/icon-192.png">
   <link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
+  <script>/* Darstellung vor dem ersten Zeichnen setzen (kein Aufblitzen) */
+    try { const t = JSON.parse(localStorage.getItem('wetterapp.settings.v3') || '{}').theme;
+      document.documentElement.dataset.theme = t === 'light' || t === 'dark' ? t : (matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light'); } catch { }</script>
   <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" crossorigin="">
   <link rel="stylesheet" href="style.css">
 </head>
 <body>
+  <div id="scene" aria-hidden="true"></div>
   <header class="topbar">
     <button class="loc" id="btnPlaces" type="button" title="Orte und Favoriten">
       <span class="loc-name"><span id="locName">Kein Standort</span><span id="locChevron"></span></span>
@@ -148,6 +152,14 @@
   <dialog id="dlgLayout">
     <div>
       <h3 id="layoutTitle">Startseite einrichten</h3>
+      <div class="theme-pick" id="themePick" hidden>
+        <h4>Darstellung</h4>
+        <div class="seg" id="themeSeg" role="radiogroup" aria-label="Darstellung">
+          <button type="button" data-theme="light">Hell</button>
+          <button type="button" data-theme="dark">Dunkel</button>
+          <button type="button" data-theme="system">Wie System</button>
+        </div>
+      </div>
       <p class="small muted">Wähle, welche Abschnitte angezeigt werden. Zum Verschieben am Griff <span id="gripHint"></span> ziehen oder die Pfeile nutzen.</p>
       <ul id="layoutList" class="layout-list"></ul>
       <div class="row"><button type="button" class="secondary" id="btnLayoutReset">Standard</button></div>
@@ -207,8 +219,38 @@
   <dialog id="dlgSettings">
     <form method="dialog">
       <h3>Einstellungen</h3>
-      <h4>Startseite</h4>
+
+      <h4>Darstellung</h4>
+      <label>Hell oder dunkel
+        <select id="setTheme">
+          <option value="system">wie System</option>
+          <option value="light">hell</option>
+          <option value="dark">dunkel</option>
+        </select>
+      </label>
+      <label class="check"><input type="checkbox" id="setScene"> Hintergrundbild passend zu Jahreszeit, Tageszeit und Wetter</label>
+      <label id="glassRow">Deckkraft der Datenbereiche: <b id="glassVal"></b>
+        <input type="range" id="setGlass" min="20" max="100" step="5">
+        <span class="range-ends small muted"><span>Bild scheint stark durch</span><span>deckend</span></span>
+      </label>
       <button type="button" class="secondary" id="btnLayout"></button>
+
+      <h4>Standort &amp; Aktualisierung</h4>
+      <label class="check"><input type="checkbox" id="setAuto"> Beim Start den GPS-Standort verwenden (sonst zuletzt angezeigten Ort)</label>
+      <label>Daten aktualisieren
+        <select id="setInterval">
+          <option value="5">alle 5 Minuten</option>
+          <option value="10">alle 10 Minuten</option>
+          <option value="15">alle 15 Minuten</option>
+          <option value="30">alle 30 Minuten</option>
+        </select>
+      </label>
+
+      <h4>Benachrichtigungen</h4>
+      <label class="check"><input type="checkbox" id="setNotify"> Wenn Regen naht (DWD-Radarvorhersage)</label>
+      <label class="check"><input type="checkbox" id="setWarnNotify"> Bei neuen DWD-Warnungen</label>
+      <p class="small muted" id="notifyHint" hidden>Die App prüft auch im Hintergrund etwa alle 15 Minuten, wenn sie geschlossen ist.</p>
+      <button type="button" id="btnTestNotify" class="secondary">Test-Benachrichtigung</button>
 
       <h4>Karte</h4>
       <label>Hintergrundkarte
@@ -232,25 +274,12 @@
         <div class="muted" id="satFound"></div>
       </details>
 
-      <h4>Aktualisierung &amp; Hinweise</h4>
-      <label>Aktualisierung
-        <select id="setInterval">
-          <option value="5">alle 5 Minuten</option>
-          <option value="10">alle 10 Minuten</option>
-          <option value="15">alle 15 Minuten</option>
-          <option value="30">alle 30 Minuten</option>
-        </select>
-      </label>
-      <label class="check"><input type="checkbox" id="setNotify"> Benachrichtigen, wenn Regen naht (DWD-Radarvorhersage)</label>
-      <label class="check"><input type="checkbox" id="setWarnNotify"> Benachrichtigen bei neuen DWD-Warnungen</label>
-      <label class="check"><input type="checkbox" id="setAuto"> Beim Start den GPS-Standort verwenden (sonst zuletzt angezeigten Ort)</label>
-
-      <h4>App</h4>
-      <div class="row">
-        <button type="button" id="btnInstall2" class="secondary">App installieren</button>
-        <button type="button" id="btnTestNotify" class="secondary">Test-Benachrichtigung</button>
+      <div id="installBox">
+        <h4>App installieren</h4>
+        <button type="button" id="btnInstall2" class="secondary">Als App installieren</button>
+        <p class="small muted" id="installHint"></p>
       </div>
-      <p class="small muted" id="installHint"></p>
+
       <div class="row end"><button value="close">Fertig</button></div>
     </form>
   </dialog>
@@ -259,6 +288,7 @@
 
   <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" crossorigin=""></script>
   <script src="icons.js"></script>
+  <script src="scene.js"></script>
   <script src="app.js"></script>
 </body>
 </html>

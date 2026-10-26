@@ -11,8 +11,8 @@
  * Pollen:      DWD Pollenflug-Gefahrenindex, außerhalb DE Open-Meteo/CAMS
  */
 'use strict';
-const APP_VERSION = '3.4.0';
-const WIZARD_VERSION = '3.4';
+const APP_VERSION = '3.7.0';
+const WIZARD_VERSION = '3.5';
 
 // ---------- Endpunkte ----------
 const BS = 'https://api.brightsky.dev';
@@ -91,7 +91,7 @@ const DEFAULTS = {
   loc: null, station: null, favs: [], basemap: 'bm_grau', sat: 'auto', satDay: '', satNight: '', intervalMin: 10,
   notify: false, warnNotify: true, autoLocate: true, mapMode: 'radar', model: 'icon_d2', rangeH: 12,
   pollen: POLLEN.map(p => p.k), pollenRegion: 'auto', pollenHideZero: false,
-  showFeels: true, showDew: true, layout: null, layoutSeen: [], wizardFor: null
+  showFeels: true, showDew: true, layout: null, layoutSeen: [], wizardFor: null, theme: 'system', scene: true, glass: 84
 };
 let S = (() => {
   try { const s = Object.assign({}, DEFAULTS, JSON.parse(localStorage.getItem(LS) || '{}')); s.favs = Array.isArray(s.favs) ? s.favs : []; return s; }
@@ -100,7 +100,31 @@ let S = (() => {
 const isUpgrade = !!localStorage.getItem(LS) && S.wizardFor !== WIZARD_VERSION;
 if (!MODELS.some(m => m.key === S.model)) S.model = 'icon_d2';   // entfernte Modelle → Standard
 delete S.keys;
-const save = () => localStorage.setItem(LS, JSON.stringify(S));
+const save = () => { localStorage.setItem(LS, JSON.stringify(S)); syncNative(); };
+
+// ---------- Android-App (wetter-android) ----------
+// Aufrufe an die App laufen über prompt() – die App nimmt sie nur von der eigenen Herkunft an.
+const NATIVE = / WetterApp-Android\//.test(navigator.userAgent);
+const native = (cmd, ...args) => { try { return JSON.parse(prompt('wetterapp:' + JSON.stringify([cmd, ...args])) ?? 'null'); } catch { return null; } };
+// Standort und Schalter für die Hintergrundprüfung (Warnungen, Regen) der App
+function syncNative() {
+  if (NATIVE) native('sync', { lat: S.loc?.lat ?? null, lon: S.loc?.lon ?? null, name: S.loc?.name ?? '', notify: S.notify, warnNotify: S.warnNotify });
+}
+const notifyPermission = () => NATIVE ? native('permission') : ('Notification' in window ? Notification.permission : 'denied');
+function requestNotifyPermission() {
+  if (NATIVE) return new Promise(res => { window.__wetterPerm = res; native('requestPermission'); });
+  return 'Notification' in window ? Notification.requestPermission() : Promise.resolve('denied');
+}
+
+// ---------- Darstellung ----------
+const darkMq = matchMedia('(prefers-color-scheme: dark)');
+function applyTheme() {
+  const t = S.theme === 'light' || S.theme === 'dark' ? S.theme : (darkMq.matches ? 'dark' : 'light');
+  document.documentElement.dataset.theme = t;
+  document.querySelectorAll('#themeSeg button').forEach(b => { b.classList.toggle('active', b.dataset.theme === S.theme); b.setAttribute('aria-checked', String(b.dataset.theme === S.theme)); });
+  const sel = $('#setTheme'); if (sel) sel.value = S.theme;
+}
+darkMq.addEventListener?.('change', () => { if (S.theme === 'system') applyTheme(); });
 
 // ---------- Helpers ----------
 const $ = (s) => document.querySelector(s);
@@ -114,17 +138,19 @@ const esc = (s) => String(s ?? '').replace(/[&<>"]/g, c => ({ '&': '&amp;', '<':
 const WD = ['So', 'Mo', 'Di', 'Mi', 'Do', 'Fr', 'Sa'];
 const HOUR = 3600000, MIN = 60000;
 const dayStart = (t) => { const d = new Date(t); d.setHours(0, 0, 0, 0); return d.getTime(); };
+// Kalendertage addieren – nicht n * 24 h, sonst stimmt der Tag bei der Zeitumstellung (23-/25-Stunden-Tag) nicht
+const addDays = (t, n) => { const d = new Date(t); d.setDate(d.getDate() + n); return d.getTime(); };
 const isoZ = (t) => new Date(t).toISOString().replace(/\.\d{3}Z$/, 'Z');
 function distKm(a, b, c, d) { const x = rad(c - a), y = rad(d - b); const h = Math.sin(x / 2) ** 2 + Math.cos(rad(a)) * Math.cos(rad(c)) * Math.sin(y / 2) ** 2; return 12742 * Math.asin(Math.sqrt(h)); }
 function whenTxt(ms) {
   const d = new Date(ms), today = dayStart(Date.now());
-  const day = dayStart(ms) === today ? 'heute ' : dayStart(ms) === today - 24 * HOUR ? 'gestern ' : `${WD[d.getDay()]} `;
+  const day = dayStart(ms) === today ? 'heute ' : dayStart(ms) === addDays(today, -1) ? 'gestern ' : `${WD[d.getDay()]} `;
   return `${day}${hhmm(ms)} Uhr`;
 }
 function hourTxt(ms) {
   const today = dayStart(Date.now()), d = dayStart(ms), h = new Date(ms).getHours();
   if (d === today) return `${h} Uhr`;
-  if (d === today + 24 * HOUR) return h < 6 ? `${h} Uhr in der Nacht` : `morgen ${h} Uhr`;
+  if (d === addDays(today, 1)) return h < 6 ? `${h} Uhr in der Nacht` : `morgen ${h} Uhr`;
   return `${WD[new Date(ms).getDay()]} ${h} Uhr`;
 }
 const avg = (a) => a.length ? a.reduce((x, y) => x + y, 0) / a.length : null;
@@ -190,7 +216,8 @@ let layoutDraft = null, layoutWasOff = [], afterLayout = null;
 function openLayout(first = false) {
   layoutDraft = S.layout.map(l => ({ ...l }));
   layoutWasOff = S.layout.filter(l => !l.on).map(l => l.id);
-  $('#layoutTitle').textContent = first ? (isUpgrade ? `Neu in Version ${WIZARD_VERSION}: Startseite einrichten` : 'Willkommen! Startseite einrichten') : 'Startseite anpassen';
+  $('#layoutTitle').textContent = first ? (isUpgrade ? `Neu in Version ${WIZARD_VERSION}: Darstellung und Startseite` : 'Willkommen! Darstellung und Startseite einrichten') : 'Startseite anpassen';
+  $('#themePick').hidden = !first;
   $('#gripHint').innerHTML = I('grip');
   renderLayoutList();
   $('#dlgLayout').showModal();
@@ -269,6 +296,59 @@ function sunTimes(dayMs, lat, lon) {
   const w = deg(Math.acos(cw)) / 360;
   return { rise: toMs(Jt - w), set: toMs(Jt + w) };
 }
+// ---------- Mond (Formeln nach astronomyanswers.com / SunCalc, Genauigkeit wenige Minuten) ----------
+const J2000_MS = Date.UTC(2000, 0, 1, 12), ECL = rad(23.4397);
+const astroDays = (ms) => (ms - J2000_MS) / 86400000;
+const raOf = (l, b) => Math.atan2(Math.sin(l) * Math.cos(ECL) - Math.tan(b) * Math.sin(ECL), Math.cos(l));
+const decOf = (l, b) => Math.asin(Math.sin(b) * Math.cos(ECL) + Math.cos(b) * Math.sin(ECL) * Math.sin(l));
+function moonCoords(d) {
+  const L = rad(218.316 + 13.176396 * d), M = rad(134.963 + 13.064993 * d), F = rad(93.272 + 13.229350 * d);
+  const l = L + rad(6.289) * Math.sin(M), b = rad(5.128) * Math.sin(F);
+  return { ra: raOf(l, b), dec: decOf(l, b), dist: 385001 - 20905 * Math.cos(M) };
+}
+function moonAltitude(ms, lat, lon) {
+  const d = astroDays(ms), c = moonCoords(d), phi = rad(lat);
+  const H = rad(280.16 + 360.9856235 * d) + rad(lon) - c.ra;
+  return Math.asin(Math.sin(phi) * Math.sin(c.dec) + Math.cos(phi) * Math.cos(c.dec) * Math.cos(H));
+}
+// Phase 0 = Neumond, 0,25 = erstes Viertel, 0,5 = Vollmond, 0,75 = letztes Viertel; frac = beleuchteter Anteil
+function moonPhase(ms) {
+  const d = astroDays(ms), M = rad(357.5291 + 0.98560028 * d);
+  const Ls = M + rad(1.9148 * Math.sin(M) + 0.02 * Math.sin(2 * M) + 0.0003 * Math.sin(3 * M)) + rad(102.9372) + Math.PI;
+  const s = { ra: raOf(Ls, 0), dec: decOf(Ls, 0), dist: 149598000 }, m = moonCoords(d);
+  const phi = Math.acos(Math.sin(s.dec) * Math.sin(m.dec) + Math.cos(s.dec) * Math.cos(m.dec) * Math.cos(s.ra - m.ra));
+  const inc = Math.atan2(s.dist * Math.sin(phi), m.dist - s.dist * Math.cos(phi));
+  const ang = Math.atan2(Math.cos(s.dec) * Math.sin(s.ra - m.ra), Math.sin(s.dec) * Math.cos(m.dec) - Math.cos(s.dec) * Math.sin(m.dec) * Math.cos(s.ra - m.ra));
+  return { frac: (1 + Math.cos(inc)) / 2, phase: 0.5 + 0.5 * inc * (ang < 0 ? -1 : 1) / Math.PI };
+}
+// Auf- und Untergänge im Zeitraum [from, from + hours] (Horizont inkl. Refraktion/Mondradius)
+function moonEvents(from, hours, lat, lon) {
+  const ev = [], alt = (h) => moonAltitude(from + h * HOUR, lat, lon) - rad(0.133);
+  let h0 = alt(0);
+  for (let i = 1; i <= hours; i += 2) {
+    // Parabel durch drei Stunden-Werte; Nullstellen im Intervall = Horizontdurchgang, steigend = Aufgang
+    const h1 = alt(i), h2 = alt(i + 1), a = (h0 + h2) / 2 - h1, b = (h2 - h0) / 2, xe = -b / (2 * a), disc = b * b - 4 * a * h1;
+    if (disc >= 0 && a !== 0) {
+      const dx = Math.sqrt(disc) / (Math.abs(a) * 2);
+      for (const x of [xe - dx, xe + dx]) if (Math.abs(x) <= 1) ev.push({ t: from + (i + x) * HOUR, rise: 2 * a * x + b > 0 });
+    } else if (a === 0 && b !== 0 && Math.abs(-h1 / b) <= 1) ev.push({ t: from + (i - h1 / b) * HOUR, rise: b > 0 });
+    h0 = h2;
+  }
+  return ev.sort((p, q) => p.t - q.t);
+}
+const MOON_NAMES = [[0.03, 'Neumond'], [0.22, 'zunehmende Sichel'], [0.28, 'zunehmender Halbmond'], [0.47, 'zunehmender Mond'], [0.53, 'Vollmond'], [0.72, 'abnehmender Mond'], [0.78, 'abnehmender Halbmond'], [0.97, 'abnehmende Sichel'], [1.01, 'Neumond']];
+const moonName = (p) => MOON_NAMES.find(([lim]) => p < lim)[1];
+function nextFullNew(ms) {   // nächster Voll- bzw. Neumond (Suche in 1-h-Schritten, auf die Stunde genau)
+  const out = {}; let prev = moonPhase(ms).phase;
+  for (let t = ms + HOUR; t < ms + 31 * 86400000 && !(out.full && out.new); t += HOUR) {
+    const p = moonPhase(t).phase;
+    if (!out.full && prev < 0.5 && p >= 0.5) out.full = t;
+    if (!out.new && p < prev - 0.5) out.new = t;
+    prev = p;
+  }
+  return out;
+}
+
 function renderSun() {
   const p = S.station?.lat != null ? { lat: S.station.lat, lon: S.station.lon, name: `Station ${S.station.name}` } : S.loc ? { ...S.loc } : null;
   const el = $('#sunRow'); if (!p) { el.innerHTML = ''; return; }
@@ -278,7 +358,88 @@ function renderSun() {
   const len = Math.round((st.set - st.rise) / MIN);
   el.innerHTML = `<span title="Sonnenaufgang${label} · ${esc(p.name)}">${I('sunrise')}<b>${hhmm(st.rise)}</b></span>`
     + `<span title="Sonnenuntergang${label} · ${esc(p.name)}">${I('sunset')}<b>${hhmm(st.set)}</b></span>`
-    + `<span class="muted" title="Tageslänge">${I('daylen')}${Math.floor(len / 60)} h ${String(len % 60).padStart(2, '0')} min${label}</span>`;
+    + `<span class="muted" title="Tageslänge">${I('daylen')}${Math.floor(len / 60)} h ${String(len % 60).padStart(2, '0')} min${label}</span>`
+    + moonRow(now, p);
+}
+function moonRow(now, p) {
+  const mp = moonPhase(now), ev = moonEvents(now, 48, p.lat, p.lon), today = dayStart(now);
+  const when = (t) => `${dayStart(t) === today ? '' : dayStart(t) === addDays(today, 1) ? 'morgen ' : `${WD[new Date(t).getDay()]} `}${hhmm(t)}`;
+  const rise = ev.find(e => e.rise), set = ev.find(e => !e.rise), nx = nextFullNew(now);
+  const items = [rise && [rise.t, `<span title="Mondaufgang · ${esc(p.name)}">${I('moonrise')}<b>${when(rise.t)}</b></span>`],
+    set && [set.t, `<span title="Monduntergang · ${esc(p.name)}">${I('moonset')}<b>${when(set.t)}</b></span>`]].filter(Boolean).sort((a, b) => a[0] - b[0]).map(x => x[1]);
+  if (!rise && !set) items.push(`<span class="muted">${moonAltitude(now, p.lat, p.lon) > 0 ? 'Mond geht nicht unter' : 'Mond geht nicht auf'}</span>`);
+  const nextTxt = [[nx.full, 'Vollmond'], [nx.new, 'Neumond']].filter(x => x[0]).sort((a, b) => a[0] - b[0]).map(([t, n]) => `${n} ${whenDay(t)}`).join(' · ');
+  return `<span class="moonbreak"></span>` + items.join('')
+    + `<span title="${esc(nextTxt)}">${window.SCENE.moonIcon(mp.phase)}<b>${moonName(mp.phase)}</b><span class="muted">${fmt(mp.frac * 100, 0)} %</span></span>`;
+}
+const whenDay = (t) => `${WD[new Date(t).getDay()]} ${new Date(t).getDate()}.${new Date(t).getMonth() + 1}.`;
+
+// ---------- Hintergrundszene (scene.js) ----------
+let sceneWx = null, sceneRainNow = false, sceneKey = '';
+const SEASON_OF_MONTH = ['winter', 'winter', 'spring', 'spring', 'spring', 'summer', 'summer', 'summer', 'autumn', 'autumn', 'autumn', 'winter'];
+const PRECIP_OF = { rain: 'rain', sleet: 'sleet', snow: 'snow', hail: 'hail', thunderstorm: 'rain' };
+// Vorschau über die Adresse, z. B. ?szene=herbst,tag,klar oder ?szene=winter,nacht,schnee,wind
+const SCENE_WORDS = {
+  season: { fruehling: 'spring', frühling: 'spring', sommer: 'summer', herbst: 'autumn', winter: 'winter' },
+  phase: { morgen: 'dawn', tag: 'day', abend: 'dusk', nacht: 'night' },
+  sky: { klar: 'clear', heiter: 'partly', bewoelkt: 'cloudy', bewölkt: 'cloudy', nebel: 'fog' },
+  precip: { regen: 'rain', schneeregen: 'sleet', schnee: 'snow', hagel: 'hail' },
+  flag: { gewitter: 'storm', heiss: 'hot', heiß: 'hot', wind: 'windy', schneedecke: 'snowCover', frost: 'frost' },
+  moon: { sichel: 0.15, halbmond: 0.25, vollmond: 0.5, abnehmend: 0.8, neumond: null }
+};
+function scenePreview() {
+  const q = new URLSearchParams(location.search).get('szene'); if (!q) return null;
+  const st = { season: 'summer', phase: 'day', sky: 'clear', precip: null, storm: false, hot: false, windy: false, snowCover: false, frost: false, moon: 0.35 };
+  for (const w of q.toLowerCase().split(',').map(x => x.trim())) {
+    for (const k of ['season', 'phase', 'sky', 'precip']) if (SCENE_WORDS[k][w]) st[k] = SCENE_WORDS[k][w];
+    if (SCENE_WORDS.flag[w]) st[SCENE_WORDS.flag[w]] = true;
+    if (w in SCENE_WORDS.moon) st.moon = SCENE_WORDS.moon[w];
+  }
+  if (st.precip === 'snow') st.snowCover = true;
+  if (st.precip && st.sky === 'clear') st.sky = 'cloudy';
+  return st;
+}
+function sceneState() {
+  const now = Date.now(), season = SEASON_OF_MONTH[new Date(now).getMonth()];
+  let phase;
+  if (S.loc) {
+    const st = sunTimes(now, S.loc.lat, S.loc.lon), D = 40 * MIN;
+    phase = st.polar ? (st.polar === 'day' ? 'day' : 'night')
+      : now < st.rise - D || now > st.set + D ? 'night' : now < st.rise + D ? 'dawn' : now > st.set - D ? 'dusk' : 'day';
+  } else { const h = new Date(now).getHours(); phase = h < 6 || h >= 20 ? 'night' : h < 8 ? 'dawn' : h >= 18 ? 'dusk' : 'day'; }
+  const c = sceneWx || {}, icon = c.icon || '', cond = c.condition || '', temp = c.temperature;
+  let precip = PRECIP_OF[cond] || PRECIP_OF[icon] || null;
+  if (!precip && sceneRainNow) precip = temp != null && temp <= 0 ? 'snow' : 'rain';   // Radar: regnet gerade am Standort
+  let sky = cond === 'fog' || icon === 'fog' ? 'fog' : icon.startsWith('clear') ? 'clear' : icon.startsWith('partly') || icon === 'wind' ? 'partly' : icon === 'cloudy' ? 'cloudy' : null;
+  if (!sky) sky = precip ? 'cloudy' : c.cloud_cover == null ? 'partly' : c.cloud_cover < 25 ? 'clear' : c.cloud_cover < 75 ? 'partly' : 'cloudy';
+  if (precip && sky === 'clear') sky = 'partly';
+  const gust = c.wind_gust_speed_10 ?? c.wind_gust_speed_30 ?? c.wind_gust_speed_60;
+  return {
+    season, phase, sky, precip, storm: cond === 'thunderstorm' || icon === 'thunderstorm',
+    hot: temp != null && temp >= 27, windy: icon === 'wind' || (gust != null && gust >= 50),
+    snowCover: precip === 'snow' || (precip === 'sleet' && temp != null && temp <= 1), frost: temp != null && temp <= 0,
+    // Mond nachts nur, wenn er über dem Horizont steht; Phase gerundet, damit die Szene nicht ständig neu gezeichnet wird
+    moon: phase === 'night' && S.loc && moonAltitude(now, S.loc.lat, S.loc.lon) > 0 ? Math.round(moonPhase(now).phase * 40) / 40 : null
+  };
+}
+function applyGlass() {
+  document.documentElement.style.setProperty('--ga', String(S.glass / 100));
+  $('#glassVal').textContent = `${S.glass} %`;
+  $('#glassRow').hidden = !S.scene;
+}
+function renderScene() {
+  document.body.classList.toggle('scene', !!S.scene);
+  applyGlass();
+  const box = $('#scene');
+  if (!S.scene) { box.innerHTML = ''; sceneKey = ''; return; }
+  const st = scenePreview() || sceneState(), key = JSON.stringify(st);
+  if (key === sceneKey) return;
+  sceneKey = key;
+  const layer = document.createElement('div');
+  layer.innerHTML = window.SCENE.svg(st);
+  box.appendChild(layer);
+  requestAnimationFrame(() => requestAnimationFrame(() => { layer.style.opacity = '1'; }));   // sanft überblenden
+  setTimeout(() => { while (box.children.length > 1) box.firstElementChild.remove(); }, 1400);
 }
 
 // ---------- Aktuelles Wetter ----------
@@ -292,6 +453,7 @@ async function loadCurrent(lat, lon) {
   }
   if (!d) d = await getJSON(`${BS}/current_weather?lat=${lat.toFixed(4)}&lon=${lon.toFixed(4)}&tz=Europe/Berlin`);
   const c = d.weather, src = (d.sources || []).find(s => s.id === c.source_id) || d.sources?.[0];
+  sceneWx = c; renderScene();
   $('#nowIcon').innerHTML = window.ICONS.weather(c.icon);
   $('#nowTemp').textContent = `${fmt(c.temperature)} °C`;
   $('#nowDesc').textContent = COND[c.condition] || ICON_TXT[c.icon] || 'trocken';
@@ -360,7 +522,7 @@ let mosmixCache = null;
 async function getMosmix(lat, lon) {
   const key = `${lat.toFixed(3)},${lon.toFixed(3)}`;
   if (mosmixCache && mosmixCache.key === key && Date.now() - mosmixCache.ts < 15 * MIN) return mosmixCache;
-  const from = new Date(dayStart(Date.now())), to = new Date(from.getTime() + 11 * 24 * HOUR);
+  const from = new Date(dayStart(Date.now())), to = new Date(addDays(from.getTime(), 11));
   const { data: d, at } = await fetchJSON(`${BS}/weather?lat=${lat.toFixed(4)}&lon=${lon.toFixed(4)}&date=${from.toISOString()}&last_date=${to.toISOString()}&tz=Europe/Berlin`);
   const rows = (d.weather || []).map(w => {
     const t = new Date(w.timestamp).getTime();
@@ -482,7 +644,7 @@ function drawChart(rows, t0, t1, model, probSrc) {
       svg += `<line class="grid" x1="${x(t)}" x2="${x(t)}" y1="${TOP}" y2="${TOP + TH}"/><text class="xlbl" x="${anchor === 'start' ? x(t) - 4 : x(t)}" y="${XL}" style="text-anchor:${anchor}">${t === t0 ? 'jetzt' : new Date(t).getHours() + ' Uhr'}</text>`;
     }
   } else {
-    for (let t = dayStart(t0) + 24 * HOUR; t < t1; t += 24 * HOUR) svg += `<line class="daysep" x1="${x(t)}" x2="${x(t)}" y1="${TOP}" y2="${XD + 4}"/>`;
+    for (let t = addDays(dayStart(t0), 1); t < t1; t = addDays(t, 1)) svg += `<line class="daysep" x1="${x(t)}" x2="${x(t)}" y1="${TOP}" y2="${XD + 4}"/>`;
     if (hourStep) {
       svg += `<text class="rowlbl" x="${PADL - 5}" y="${XL}" text-anchor="end">Uhr</text>`;
       for (let t = Math.ceil(t0 / HOUR) * HOUR; t <= t1; t += HOUR) {
@@ -492,12 +654,12 @@ function drawChart(rows, t0, t1, model, probSrc) {
         svg += `<line class="grid" x1="${x(t)}" x2="${x(t)}" y1="${TOP}" y2="${TOP + TH}"/><text class="xlbl" x="${x(t)}" y="${XL}">${hr}</text>`;
       }
     }
-    for (let t = dayStart(t0); t < t1; t += 24 * HOUR) {
-      const a = Math.max(t, t0), b = Math.min(t + 24 * HOUR, t1), span = x(b) - x(a);
+    for (let t = dayStart(t0); t < t1; t = addDays(t, 1)) {
+      const a = Math.max(t, t0), b = Math.min(addDays(t, 1), t1), span = x(b) - x(a);
       if (span < 14) continue;
       const d = new Date(t), today = dayStart(Date.now());
-      const name = t === today ? 'Heute' : t === today + 24 * HOUR ? 'Morgen' : WD[d.getDay()];
-      const txt = span >= 70 ? `${name} ${t > today + 24 * HOUR ? d.getDate() + '.' : ''}`.trim() : span >= 44 ? name : WD[d.getDay()];
+      const name = t === today ? 'Heute' : t === addDays(today, 1) ? 'Morgen' : WD[d.getDay()];
+      const txt = span >= 70 ? `${name} ${t > addDays(today, 1) ? d.getDate() + '.' : ''}`.trim() : span >= 44 ? name : WD[d.getDay()];
       svg += `<text class="xlbl day" x="${(x(a) + x(b)) / 2}" y="${XD}">${txt}</text>`;
     }
   }
@@ -533,7 +695,7 @@ function drawChart(rows, t0, t1, model, probSrc) {
   // Zeitblöcke
   const B = H <= 12 ? (pph >= 22 ? 1 : 2) : [3, 6, 12, 24].find(b => b * pph >= 22) || 24;
   const buckets = [];
-  if (B === 24) { for (let t = dayStart(t0); t < t1; t += 24 * HOUR) buckets.push([Math.max(t, t0), Math.min(t + 24 * HOUR, t1)]); }
+  if (B === 24) { for (let t = dayStart(t0); t < t1; t = addDays(t, 1)) buckets.push([Math.max(t, t0), Math.min(addDays(t, 1), t1)]); }
   else {
     let t = t0; const h0 = new Date(t0).getHours(), first = (B - (h0 % B)) % B;
     if (first) { buckets.push([t0, t0 + first * HOUR]); t = t0 + first * HOUR; }
@@ -639,7 +801,7 @@ async function loadDays(lat, lon) {
   const gmin = Math.min(...days.map(d => d.tmin)), gmax = Math.max(...days.map(d => d.tmax)), span = Math.max(1, gmax - gmin);
   const box = $('#daysList'); box.className = 'days';
   box.innerHTML = days.map(x => {
-    const dt = new Date(x.d), name = x.d === today ? 'Heute' : x.d === today + 24 * HOUR ? 'Morgen' : WD[dt.getDay()];
+    const dt = new Date(x.d), name = x.d === today ? 'Heute' : x.d === addDays(today, 1) ? 'Morgen' : WD[dt.getDay()];
     const rain = x.mm >= 0.1 ? `<b>${fmt(x.mm, x.mm >= 10 ? 0 : 1)} mm</b>` : 'trocken';
     const extra = [x.prob != null && x.prob >= 10 ? `${fmt(x.prob, 0)} %` : '', x.sun != null ? `${fmt(x.sun / 60, 1)} h Sonne` : '', x.gust >= 50 ? `Böen ${fmt(x.gust, 0)}` : ''].filter(Boolean).join(' · ');
     const l = (x.tmin - gmin) / span * 100, w = Math.max(4, (x.tmax - x.tmin) / span * 100);
@@ -680,7 +842,7 @@ async function loadDayText(lat, lon) {
 }
 function buildDayText(rows, now) {
   const tomorrow = new Date(now).getHours() >= 20;
-  const base = dayStart(now) + (tomorrow ? 24 * HOUR : 0);
+  const base = addDays(dayStart(now), tomorrow ? 1 : 0);
   const word = tomorrow ? 'Morgen' : 'Heute';
   const PER = [{ k: 'V', a: 6, b: 12 }, { k: 'N', a: 12, b: 18 }, { k: 'A', a: 18, b: 24 }];
   const periods = [];
@@ -737,7 +899,7 @@ function buildDayText(rows, now) {
   const dayP = periods.filter(p => p.k !== 'A');
   if (dayP.length) text += ` Höchstwert ${fmt(Math.max(...dayP.map(p => p.tmax)), 0)} °C`;
   else text += ` Temperaturen um ${fmt((l.tmax + l.tmin) / 2, 0)} °C`;
-  const night = rows.filter(r => r.t > base + 24 * HOUR && r.t <= base + 31 * HOUR);
+  const night = rows.filter(r => r.t > addDays(base, 1) && r.t <= addDays(base, 1) + 7 * HOUR);
   if (night.length >= 3) text += `, in der Nacht ${fmt(Math.min(...night.map(r => r.temp)), 0)} °C`;
   text += '.';
   const wetP = periods.filter(p => p.wet).sort((a, b) => b.mm - a.mm)[0];
@@ -839,7 +1001,7 @@ async function getDwdPollen() {
   dwdPollen = { ts: Date.now(), at, data }; return dwdPollen;
 }
 const parseDwdTime = (s) => { const m = String(s || '').match(/(\d{4})-(\d{2})-(\d{2})\s+(\d{1,2}):(\d{2})/); return m ? new Date(+m[1], m[2] - 1, +m[3], +m[4], +m[5]).getTime() : null; };
-const dayLabel = (t) => { const today = dayStart(Date.now()); return t === today ? 'Heute' : t === today + 24 * HOUR ? 'Morgen' : `${WD[new Date(t).getDay()]} ${new Date(t).getDate()}.`; };
+const dayLabel = (t) => { const today = dayStart(Date.now()); return t === today ? 'Heute' : t === addDays(today, 1) ? 'Morgen' : `${WD[new Date(t).getDay()]} ${new Date(t).getDate()}.`; };
 async function loadPollen(lat, lon) {
   const sel = POLLEN.filter(p => S.pollen.includes(p.k));
   if (!sel.length) { renderPollen(null, [], 'Keine Pollenart gewählt – über „Pollenarten wählen“ festlegen.'); return; }
@@ -852,7 +1014,7 @@ async function loadPollen(lat, lon) {
       const upd = parseDwdTime(data.last_update);
       const shift = upd ? Math.max(0, Math.round((dayStart(Date.now()) - dayStart(upd)) / 86400000)) : 0;
       const keys = ['today', 'tomorrow', 'dayafter_to'].slice(shift);
-      const days = keys.map((_, i) => dayLabel(dayStart(Date.now()) + i * 24 * HOUR));
+      const days = keys.map((_, i) => dayLabel(addDays(dayStart(Date.now()), i)));
       const rows = sel.map(p => ({ name: p.name, vals: keys.map(k => PSTEP[entry.Pollen?.[p.k]?.[k]] ?? null) }));
       renderPollen(days, rows, `DWD Pollenflug-Gefahrenindex · Gebiet ${reg[1]}${S.pollenRegion === 'auto' ? ' (automatisch)' : ''} · Stand ${upd ? whenTxt(upd) : data.last_update}`);
       return;
@@ -863,7 +1025,7 @@ async function loadPollen(lat, lon) {
   const { data: d, at } = await fetchJSON(`${OM_AQ}?${q}`);
   const h = d.hourly || {}, t = (h.time || []).map(x => x * 1000);
   const base = dayStart(Date.now());
-  const days = [0, 1, 2].map(i => dayLabel(base + i * 24 * HOUR));
+  const days = [0, 1, 2].map(i => dayLabel(addDays(base, i)));
   const level = (k, v) => {
     if (v == null) return null;
     const th = k === 'grass_pollen' ? [1, 5, 15, 30, 50, 100] : k === 'ragweed_pollen' || k === 'mugwort_pollen' ? [1, 3, 6, 10, 20, 40] : [1, 10, 30, 50, 100, 200];
@@ -871,7 +1033,7 @@ async function loadPollen(lat, lon) {
   };
   const rows = sel.map(p => ({ name: p.name, vals: [0, 1, 2].map(i => {
     if (!p.om) return null;
-    const vs = t.map((x, j) => x >= base + i * 24 * HOUR && x < base + (i + 1) * 24 * HOUR ? h[p.om]?.[j] : null).filter(v => v != null);
+    const vs = t.map((x, j) => x >= addDays(base, i) && x < addDays(base, i + 1) ? h[p.om]?.[j] : null).filter(v => v != null);
     return vs.length ? level(p.om, Math.max(...vs)) : null;
   }) }));
   renderPollen(days, rows, `Open-Meteo / CAMS (Modell, 11 km) · Stufen aus Pollenkonzentration abgeleitet · Datenstand ${whenTxt(at)}${isGermany() ? ' · DWD-Daten derzeit nicht abrufbar' : ''}`);
@@ -1204,6 +1366,7 @@ const rainCol = (mmh) => mmh < 0.5 ? '#9fd3ff' : mmh < 2 ? '#2f7fff' : mmh < 10 
 let lastNowcast;
 function renderNowcast(r) {
   lastNowcast = r;
+  if (sceneRainNow !== !!r?.atLoc) { sceneRainNow = !!r?.atLoc; renderScene(); }
   const el = $('#rainHint');
   if (!r) { el.className = 'rainhint small'; el.innerHTML = ''; $('#ncChart').innerHTML = ''; $('#ncInfo').textContent = 'Radardaten derzeit nicht abrufbar.'; return; }
   let cls, txt;
@@ -1243,7 +1406,8 @@ async function rainNotify(title, body) {
 }
 async function notify(title, body, tag, kind) {
   const allowed = kind === 'rain' ? S.notify : kind === 'warn' ? S.warnNotify : true;
-  if (!allowed || !('Notification' in window) || Notification.permission !== 'granted') return false;
+  if (!allowed || notifyPermission() !== 'granted') return false;
+  if (NATIVE) return !!native('notify', tag, title, body);
   const o = { body, icon: 'icons/icon-192.png', badge: 'icons/badge-96.png', tag, renotify: true };
   try { const reg = await navigator.serviceWorker?.getRegistration(); if (reg) { await reg.showNotification(title, o); return true; } } catch { }
   try { new Notification(title, o); return true; } catch { return false; }
@@ -1316,6 +1480,7 @@ async function refresh() {
   const jobs = [];
   if (isOn('warnings')) jobs.push(loadWarnings(lat, lon).catch(() => { $('#warnings').innerHTML = ''; }));
   if (isOn('now')) { renderSun(); jobs.push(loadCurrent(lat, lon).catch(e => { $('#nowStation').textContent = `Aktuelle Werte nicht abrufbar (${e.message})`; })); }
+  else if (S.scene) jobs.push(getJSON(`${BS}/current_weather?lat=${lat.toFixed(4)}&lon=${lon.toFixed(4)}&tz=Europe/Berlin`).then(d => { sceneWx = d.weather; renderScene(); }).catch(() => {}));
   const radarJob = isOn('nowcast') ? loadRadar(lat, lon).then(renderNowcast).catch(() => renderNowcast(null)) : Promise.resolve();
   jobs.push(radarJob);
   if (isOn('daytext')) jobs.push(loadDayText(lat, lon).catch(e => { $('#dayText').textContent = `Textprognose nicht abrufbar (${e.message}).`; renderWinter([]); }));
@@ -1341,7 +1506,7 @@ function initSettings() {
     if (el.type === 'checkbox') el.checked = S[key]; else el.value = String(S[key] ?? '');
     el.onchange = async () => {
       if (el.type === 'checkbox' && el.checked && (key === 'notify' || key === 'warnNotify')) {
-        if (!('Notification' in window) || await Notification.requestPermission() !== 'granted') { el.checked = false; toast('Benachrichtigungen nicht erlaubt.'); return; }
+        if (await requestNotifyPermission() !== 'granted') { el.checked = false; toast('Benachrichtigungen nicht erlaubt.'); return; }
       }
       S[key] = el.type === 'checkbox' ? el.checked : conv(el.value); save(); after?.();
     };
@@ -1353,10 +1518,15 @@ function initSettings() {
   bind('#setSatNight', 'satNight', v => v.trim(), satChanged);
   bind('#setInterval', 'intervalMin', Number, schedule);
   bind('#setNotify', 'notify'); bind('#setWarnNotify', 'warnNotify'); bind('#setAuto', 'autoLocate');
-  $('#btnLayout').innerHTML = `${I('layout')} Abschnitte auswählen und sortieren`;
+  bind('#setTheme', 'theme', v => v, applyTheme);
+  bind('#setScene', 'scene', v => v, renderScene);
+  bind('#setGlass', 'glass', Number, applyGlass);
+  $('#setGlass').oninput = (e) => { S.glass = Number(e.target.value); applyGlass(); };   // live beim Ziehen, gespeichert bei onchange
+  document.querySelectorAll('#themeSeg button').forEach(b => b.onclick = () => { S.theme = b.dataset.theme; save(); applyTheme(); });
+  $('#btnLayout').innerHTML = `${I('layout')} Startseite: Abschnitte auswählen und sortieren`;
   $('#btnLayout').onclick = () => { $('#dlgSettings').close(); openLayout(false); };
   $('#btnTestNotify').onclick = async () => {
-    if ('Notification' in window && Notification.permission === 'default') await Notification.requestPermission();
+    if (notifyPermission() === 'default') await requestNotifyPermission();
     if (!(await notify('Test: Regen in ca. 20 min', 'So sieht ein Regenhinweis aus.', 'test', 'test'))) toast('Benachrichtigungen sind nicht erlaubt.');
   };
 }
@@ -1367,6 +1537,9 @@ function initPwa() {
   const isStandalone = matchMedia('(display-mode: standalone)').matches || navigator.standalone;
   const ios = /iphone|ipad|ipod/i.test(navigator.userAgent);
   const hint = $('#installHint');
+  // In der Android-App oder als installierte PWA gibt es nichts mehr zu installieren
+  $('#installBox').hidden = NATIVE || isStandalone;
+  $('#notifyHint').hidden = !NATIVE;
   if (isStandalone) hint.textContent = 'Die App ist installiert.';
   else if (ios) hint.textContent = 'iPhone/iPad: In Safari auf „Teilen“ und dann „Zum Home-Bildschirm“ tippen.';
   else hint.textContent = 'Falls der Button nichts tut: im Browsermenü „App installieren“ bzw. „Zum Startbildschirm hinzufügen“ wählen.';
@@ -1394,7 +1567,7 @@ function initPwa() {
 // ---------- Start ----------
 function init() {
   if (isUpgrade && !S.layoutSeen.length) S.layoutSeen = SECTIONS.map(x => x.id).filter(id => !NEW_IN_VERSION.includes(id));
-  S.layout = normLayout(); save(); applyLayout();
+  S.layout = normLayout(); save(); applyLayout(); applyTheme(); renderScene();
   $('#bkgYear').textContent = `(${YEAR})`;
   $('#appVersion').textContent = `Version ${APP_VERSION}`;
   $('#btnLocate').innerHTML = I('gps'); $('#btnSearch').innerHTML = I('search'); $('#btnRefresh').innerHTML = I('refresh');
@@ -1426,7 +1599,7 @@ function init() {
   const startLocate = () => { if (S.autoLocate || !S.loc) locate(); };
   if (S.wizardFor !== WIZARD_VERSION) { afterLayout = startLocate; openLayout(true); } else startLocate();
   schedule();
-  setInterval(() => { if (isOn('now')) renderSun(); }, 10 * MIN);
+  setInterval(() => { if (isOn('now')) renderSun(); renderScene(); }, 10 * MIN);
 }
 let rsT;
 window.addEventListener('resize', () => { clearTimeout(rsT); rsT = setTimeout(() => { if (lastChart) drawChart(...lastChart); if (lastNowcast) renderNowcast(lastNowcast); }, 150); });

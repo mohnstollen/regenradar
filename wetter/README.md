@@ -1,4 +1,33 @@
-# Wetter-App (PWA) – Version 3.4.0
+# Wetter-App (PWA) – Version 3.7.0
+
+## Neu in 3.7
+- Mond: Auf- und Untergang (die nächsten beiden, mit „morgen“) sowie die aktuelle Mondphase mit beleuchtetem Anteil
+  unter den Sonnenzeiten. Beim Antippen bzw. Darüberfahren erscheinen der nächste Voll- und Neumond.
+  Die Nachtszene zeigt den Mond in seiner echten Phase, und nur dann, wenn er über dem Horizont steht.
+- Einstellungen → Darstellung: Deckkraft der Datenbereiche (20–100 %), damit das Hintergrundbild mehr oder weniger durchscheint
+- Einstellungen neu gegliedert: Darstellung, Standort & Aktualisierung, Benachrichtigungen, Karte.
+  „App installieren“ erscheint nur noch im Browser, solange die App nicht installiert ist.
+
+## Neu in 3.6
+- Hintergrundbild: eine gezeichnete Landschaft (`scene.js`, reines SVG, keine Bilddateien) passend zu
+  - Jahreszeit: Frühling mit Blüten und Wiesenblumen, Sommer mit Kornfeld, Herbst mit buntem Laubwald und fallenden
+    Blättern, Winter mit kahlen Bäumen. Schnee liegt nur, wenn es gerade schneit.
+  - Tageszeit nach Sonnenauf- und -untergang am Ort: Morgenrot, Tag, Abendrot, Nacht mit Mond und Sternen
+  - Wetter laut DWD-Station: klar, heiter, bewölkt, Nebel, Regen, Schnee, Gewitter mit Blitzen, Wind, Hitze ab 27 °C.
+    Zeigt das Radar Regen am Standort, regnet es auch im Bild.
+- Die Karten werden dabei leicht durchscheinend. Abschaltbar unter Einstellungen → Darstellung.
+- Vorschau aller Szenen über die Adresse, z. B. `?szene=herbst,tag,klar`, `?szene=winter,nacht,schnee,wind` oder
+  `?szene=sommer,abend,heiss`. Mögliche Wörter: frühling/sommer/herbst/winter, morgen/tag/abend/nacht,
+  klar/heiter/bewölkt/nebel, regen/schneeregen/schnee/hagel, gewitter/heiß/wind/schneedecke/frost
+
+## Neu in 3.5.1
+- Behoben: Am Tag der Zeitumstellung (23 bzw. 25 Stunden) waren Tagesnamen und Tagestrennlinien im Diagramm
+  um einen Tag bzw. eine Stunde verschoben, z. B. „Morgen“ und danach nochmals „Mo“. Dasselbe galt für
+  „Morgen“ in der 10-Tage-Übersicht und für die Tage beim Pollenflug.
+
+## Neu in 3.5
+- Darstellung hell, dunkel oder wie System (Einstellungen → Darstellung). Der Einrichtungsassistent fragt beim ersten Start danach.
+- Android-App (`../wetter-android`): native Benachrichtigungen und Hintergrundprüfung auf Warnungen und Regen
 
 ## Neu in 3.4
 - Entfernt: Luftqualität (UBA), alle Modelle außer DWD und ECMWF, Anbieter mit API-Key
