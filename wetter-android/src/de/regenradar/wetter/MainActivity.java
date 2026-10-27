@@ -138,7 +138,15 @@ public class MainActivity extends Activity {
                     .putInt("rainRadius", o.optInt("rainRadius", 10))
                     .putString("rainMin", o.optString("rainMin", "all"))
                     .putBoolean("stormNotify", o.optBoolean("stormNotify"))
-                    .putInt("stormRadius", o.optInt("stormRadius", 50));
+                    .putInt("stormRadius", o.optInt("stormRadius", 50))
+                    .putBoolean("dailyEve", o.optBoolean("dailyEve"))
+                    .putString("dailyEveTime", o.optString("dailyEveTime", "20:00"))
+                    .putBoolean("dailyMorn", o.optBoolean("dailyMorn"))
+                    .putString("dailyMornTime", o.optString("dailyMornTime", "06:30"));
+                JSONObject dp = o.optJSONObject("dailyPlace");   // Ort der Tagesvorhersage (zuletzt per GPS oder Favorit)
+                if (dp != null && !dp.isNull("lat")) e.putLong("dailyLat", Double.doubleToLongBits(dp.getDouble("lat")))
+                    .putLong("dailyLon", Double.doubleToLongBits(dp.getDouble("lon"))).putString("dailyName", dp.optString("name", ""));
+                else e.remove("dailyLat").remove("dailyLon");
                 boolean moved;
                 if (o.isNull("lat") || o.isNull("lon")) { e.remove("lat").remove("lon"); moved = false; }
                 else {
@@ -148,6 +156,7 @@ public class MainActivity extends Activity {
                 }
                 e.apply();
                 CheckService.update(this);
+                DailyAlarm.schedule(this);
                 if (Widgets.any(this)) {
                     Widgets.render(this);                  // Ortsname, Hell/Dunkel sofort
                     if (moved) CheckService.runSoon(this); // neuer Ort: frische Daten holen

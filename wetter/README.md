@@ -1,4 +1,9 @@
-# Wetter-App (PWA) – Version 3.11.0
+# Wetter-App (PWA) – Version 3.12.0
+
+## Neu in 3.12
+- Android-App: Tagesvorhersage als Benachrichtigung – abends für morgen (Standard 20:00 Uhr) und/oder morgens für heute
+  (Standard 6:30 Uhr), Uhrzeit frei wählbar. Inhalt: Textprognose aus DWD ICON-D2 mit Winterhinweisen und den
+  DWD-Warnungen für den Tag. Ort: zuletzt per GPS ermittelter Standort oder ein Favorit. Auch im Einrichtungsassistenten.
 
 ## Neu in 3.11
 - Benachrichtigungen lassen sich schon im Einrichtungsassistenten beim ersten Start festlegen, in der Android-App
