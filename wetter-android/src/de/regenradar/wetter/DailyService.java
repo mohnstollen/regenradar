@@ -31,7 +31,7 @@ public class DailyService extends JobService {
             @Override
             public void run() {
                 boolean failed = false;
-                try { DailyForecast.run(getApplicationContext(), x.getBoolean("evening", true)); }
+                try { DailyForecast.runLogged(getApplicationContext(), x.getBoolean("evening", true)); }
                 catch (Exception e) { failed = true; }
                 jobFinished(params, failed && System.currentTimeMillis() - x.getLong("due", 0) < MAX_LATE);
             }

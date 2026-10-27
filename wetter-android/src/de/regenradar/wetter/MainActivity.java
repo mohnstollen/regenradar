@@ -114,6 +114,9 @@ public class MainActivity extends Activity {
 
         if (state != null) web.restoreState(state);
         else web.loadUrl(START);
+        // Wecker und Hintergrundprüfung bei jedem Start neu stellen – manche Hersteller löschen sie beim Schließen der App
+        DailyAlarm.schedule(this);
+        CheckService.update(this);
     }
 
     private String bridge(JSONArray a) throws JSONException {
@@ -123,6 +126,30 @@ public class MainActivity extends Activity {
             case "requestPermission":
                 if (Notifier.allowed(this) || Build.VERSION.SDK_INT < 33) permissionResult();
                 else requestPermissions(new String[] { Notifier.POST_NOTIFICATIONS }, REQ_NOTIFY);
+                return "null";
+            case "dailyTest": {   // Tagesvorhersage sofort senden; Ergebnis per window.__dailyTest(text)
+                final boolean evening = a.optBoolean(1, true);
+                new Thread(new Runnable() {
+                    @Override
+                    public void run() {
+                        String msg;
+                        try { DailyForecast.runLogged(getApplicationContext(), evening); msg = "Tagesvorhersage gesendet."; }
+                        catch (Exception e) { msg = "Tagesvorhersage fehlgeschlagen: " + DailyForecast.reason(e); }
+                        final String js = "window.__dailyTest && window.__dailyTest(" + JSONObject.quote(msg) + ")";
+                        runOnUiThread(new Runnable() { @Override public void run() { web.evaluateJavascript(js, null); } });
+                    }
+                }).start();
+                return "null";
+            }
+            case "dailyStatus": {
+                SharedPreferences p = Notifier.prefs(this);
+                JSONObject o = new JSONObject().put("exact", DailyAlarm.exactAllowed(this)).put("xiaomi", isXiaomi());
+                for (String k : new String[] { "dailyEve", "dailyMorn" })
+                    o.put(k, new JSONObject().put("next", p.getLong(k + "Next", 0)).put("lastAt", p.getLong(k + "LastAt", 0)).put("last", p.getString(k + "Last", "")));
+                return o.toString();
+            }
+            case "openSettings":   // "autostart" (Xiaomi) oder App-Details (Akku, Berechtigungen)
+                openSettings("autostart".equals(a.optString(1)));
                 return "null";
             case "notify":
                 return String.valueOf(Notifier.show(this, a.getString(1), a.getString(2), a.getString(3)));
@@ -166,6 +193,23 @@ public class MainActivity extends Activity {
             default:
                 return "null";
         }
+    }
+
+    private static boolean isXiaomi() {
+        String m = (Build.MANUFACTURER + " " + Build.BRAND).toLowerCase(java.util.Locale.ROOT);
+        return m.contains("xiaomi") || m.contains("redmi") || m.contains("poco");
+    }
+
+    private void openSettings(boolean autostart) {
+        if (autostart && isXiaomi()) {
+            try {
+                startActivity(new Intent().setComponent(new android.content.ComponentName("com.miui.securitycenter",
+                    "com.miui.permcenter.autostart.AutoStartManagementActivity")));
+                return;
+            } catch (Exception ignored) { }   // andere HyperOS-Version: App-Details als Rückfall
+        }
+        try { startActivity(new Intent(android.provider.Settings.ACTION_APPLICATION_DETAILS_SETTINGS, Uri.parse("package:" + getPackageName()))); }
+        catch (Exception ignored) { }
     }
 
     /** Wie Notification.permission: "granted", "denied" oder "default" (noch nicht gefragt). */

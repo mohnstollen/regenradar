@@ -37,10 +37,29 @@ final class DailyForecast {
 
     static final class Data { List<Row> rows = new ArrayList<>(); double elevation = Double.NaN; }
 
+    /** Wie run(), merkt sich aber Zeitpunkt und Ergebnis für die Statusanzeige in den Einstellungen. */
+    static void runLogged(Context c, boolean evening) throws Exception {
+        String k = evening ? "dailyEve" : "dailyMorn";
+        SharedPreferences p = Notifier.prefs(c);
+        try {
+            run(c, evening);
+            p.edit().putLong(k + "LastAt", System.currentTimeMillis()).putString(k + "Last", "gesendet").apply();
+        } catch (Exception e) {
+            p.edit().putLong(k + "LastAt", System.currentTimeMillis()).putString(k + "Last", "Fehler: " + reason(e)).apply();
+            throw e;
+        }
+    }
+
+    static String reason(Exception e) {
+        if (e instanceof java.net.UnknownHostException || e instanceof java.net.SocketTimeoutException || e instanceof java.net.ConnectException) return "keine Verbindung";
+        return e.getMessage() != null ? e.getMessage() : e.getClass().getSimpleName();
+    }
+
     /** Meldung abschicken. evening = true: Vorhersage für morgen, sonst für heute. */
     static void run(Context c, boolean evening) throws Exception {
         SharedPreferences p = Notifier.prefs(c);
-        if (!p.contains("dailyLat")) return;
+        if (!Notifier.allowed(c)) throw new Exception("Benachrichtigungen nicht erlaubt");
+        if (!p.contains("dailyLat")) throw new Exception("kein Ort festgelegt");
         double lat = Double.longBitsToDouble(p.getLong("dailyLat", 0)), lon = Double.longBitsToDouble(p.getLong("dailyLon", 0));
         String place = p.getString("dailyName", "");
         long now = System.currentTimeMillis();
@@ -48,7 +67,7 @@ final class DailyForecast {
         try { d = fetch(lat, lon, "icon_d2"); }
         catch (Exception e) { d = fetch(lat, lon, "icon_seamless"); }   // außerhalb des ICON-D2-Gebiets
         String[] out = dayText(d.rows, now, evening);
-        if (out == null) return;
+        if (out == null) throw new Exception("keine Vorhersagedaten");
         StringBuilder body = new StringBuilder(out[0]);
         for (String w : winter(d.rows, d.elevation, now)) body.append('\n').append(w);
         try {

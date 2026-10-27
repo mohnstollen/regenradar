@@ -6,13 +6,15 @@ import android.content.BroadcastReceiver;
 import android.content.Context;
 import android.content.Intent;
 import android.content.SharedPreferences;
+import android.os.Build;
 
 import java.util.Calendar;
 
 /**
  * Wecker für die Tagesvorhersage (abends für morgen, morgens für heute) zur eingestellten Uhrzeit.
- * setAndAllowWhileIdle weckt auch im Energiesparmodus, kann aber ein paar Minuten später kommen.
+ * Genauer Wecker (USE_EXACT_ALARM), der auch im Energiesparmodus weckt; ohne Erlaubnis ein ungenauer.
  * Klappt der Abruf nicht, versucht es DailyService erneut, sobald Netz da ist.
+ * Hinweis Xiaomi/HyperOS: ohne „Autostart“ stellt das System Wecker geschlossener Apps nicht zu.
  */
 public class DailyAlarm extends BroadcastReceiver {
     private static final String ACTION = "de.regenradar.wetter.DAILY";
@@ -30,9 +32,15 @@ public class DailyAlarm extends BroadcastReceiver {
             new Intent(c, DailyAlarm.class).setAction(ACTION).putExtra("evening", evening),
             PendingIntent.FLAG_IMMUTABLE | PendingIntent.FLAG_UPDATE_CURRENT);
         AlarmManager am = c.getSystemService(AlarmManager.class);
-        if (!p.getBoolean(key, false) || !p.contains("dailyLat")) { am.cancel(pi); return; }
+        if (!p.getBoolean(key, false) || !p.contains("dailyLat")) { am.cancel(pi); p.edit().remove(key + "Next").apply(); return; }
         long t = next(p.getString(key + "Time", evening ? "20:00" : "06:30"), System.currentTimeMillis());
-        am.setAndAllowWhileIdle(AlarmManager.RTC_WAKEUP, t, pi);
+        if (exactAllowed(c)) am.setExactAndAllowWhileIdle(AlarmManager.RTC_WAKEUP, t, pi);
+        else am.setAndAllowWhileIdle(AlarmManager.RTC_WAKEUP, t, pi);
+        p.edit().putLong(key + "Next", t).apply();   // für die Statusanzeige in den Einstellungen
+    }
+
+    static boolean exactAllowed(Context c) {
+        return Build.VERSION.SDK_INT < 31 || c.getSystemService(AlarmManager.class).canScheduleExactAlarms();
     }
 
     /** Nächster Zeitpunkt „HH:mm“ nach now (frühestens in einer Minute). */
@@ -54,7 +62,7 @@ public class DailyAlarm extends BroadcastReceiver {
         new Thread(new Runnable() {
             @Override
             public void run() {
-                try { DailyForecast.run(c, evening); }
+                try { DailyForecast.runLogged(c, evening); }
                 catch (Exception e) { DailyService.retry(c, evening); }
                 finally {
                     scheduleOne(c, evening);   // nächster Tag

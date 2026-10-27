@@ -233,6 +233,9 @@ dialog label.check { display: flex; gap: .5rem; align-items: flex-start; }
 .subopts label { margin: .4rem 0; }
 .subopts input[type=time] { font: inherit; padding: .35rem .5rem; border-radius: 8px; border: 1px solid var(--line2); background: var(--bg); color: var(--text); margin-left: .4rem; }
 .subopts p { margin: .2rem 0 .3rem; }
+.daily-status { white-space: pre-line; color: var(--muted); }
+.daily-xiaomi { margin-top: .5rem; padding: .5rem .6rem; border-radius: 10px; background: var(--bg); }
+.daily-xiaomi p { margin: 0 0 .4rem; }
 dialog input[type=text], dialog select { width: 100%; padding: .5rem; border-radius: 8px; border: 1px solid var(--line2); font-size: .95rem; background: var(--bg); color: var(--text); margin-top: .25rem; }
 .row { display: flex; gap: .5rem; margin-top: .6rem; flex-wrap: wrap; }
 .row.end { justify-content: flex-end; }

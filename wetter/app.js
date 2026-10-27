@@ -11,7 +11,7 @@
  * Pollen:      DWD Pollenflug-Gefahrenindex, außerhalb DE Open-Meteo/CAMS
  */
 'use strict';
-const APP_VERSION = '3.12.0';
+const APP_VERSION = '3.12.1';
 const WIZARD_VERSION = '3.11';
 
 // ---------- Endpunkte ----------
@@ -1557,7 +1557,26 @@ function initNotifyControls() {
     S[key] = el.type === 'checkbox' ? el.checked : 'num' in el.dataset ? Number(el.value) : el.value;
     save(); syncNotifyControls();
   });
+  document.querySelectorAll('.notify-block [data-daily-test]').forEach(b => b.onclick = () => {
+    toast('Tagesvorhersage wird abgerufen …');
+    native('dailyTest', b.dataset.dailyTest === 'eve');
+  });
+  document.querySelectorAll('.notify-block [data-open]').forEach(b => b.onclick = () => native('openSettings', b.dataset.open));
+  window.__dailyTest = (msg) => { toast(msg, 6000); syncNotifyControls(); };
   syncNotifyControls();
+}
+// Status der Tagesvorhersage aus der Android-App: nächste und letzte Meldung
+function dailyStatusText() {
+  const st = NATIVE && native('dailyStatus');
+  if (!st) return '';
+  const part = (k, label) => {
+    if (!S[k]) return '';
+    const s = st[k] || {}, bits = [];
+    bits.push(s.next ? `nächste ${whenTxt(s.next)}` : 'nicht geplant');
+    if (s.lastAt) bits.push(`zuletzt ${whenTxt(s.lastAt)}: ${s.last}`);
+    return `${label}: ${bits.join(' · ')}`;
+  };
+  return [part('dailyEve', 'Abends'), part('dailyMorn', 'Morgens'), st.exact ? '' : 'Genaue Wecker sind nicht erlaubt – die Meldung kann sich verspäten.'].filter(Boolean).join('\n');
 }
 function syncNotifyControls() {
   document.querySelectorAll('.notify-block [data-key=dailyPlace]').forEach(sel => {
@@ -1569,6 +1588,11 @@ function syncNotifyControls() {
   document.querySelectorAll('.notify-block .native-only').forEach(el => { el.hidden = !NATIVE; });
   document.querySelectorAll('.notify-block .browser-only').forEach(el => { el.hidden = NATIVE; });
   document.querySelectorAll('.notify-block [data-show]').forEach(el => { el.hidden = !NATIVE || !el.dataset.show.split(' ').some(k => S[k]); });
+  if (NATIVE && (S.dailyEve || S.dailyMorn)) {
+    const txt = dailyStatusText(), xiaomi = !!native('dailyStatus')?.xiaomi;
+    document.querySelectorAll('.notify-block .daily-status').forEach(el => { el.textContent = txt; });
+    document.querySelectorAll('.notify-block .daily-xiaomi').forEach(el => { el.hidden = !xiaomi; });
+  }
 }
 
 // ---------- PWA ----------

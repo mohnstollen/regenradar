@@ -51,7 +51,11 @@ eingebetteten Seiten wie Windy.
   - Der Text entsteht wie `buildDayText()`/`buildWinter()` in `app.js`. Ändert sich dort etwas, muss es hier
     nachgezogen werden. Ein Vergleichstest mit Zufallsdaten muss Wort für Wort gleiche Texte liefern.
   - Ort: der zuletzt per GPS ermittelte Standort („Mein Standort“), ohne Hintergrund-Standortberechtigung, oder ein Favorit.
-  - Der Wecker (`setAndAllowWhileIdle`) weckt auch im Energiesparmodus, kann aber einige Minuten später kommen.
+  - Genauer Wecker (`setExactAndAllowWhileIdle`, Berechtigung `USE_EXACT_ALARM`), der auch im Energiesparmodus weckt.
+    Die App stellt ihn bei jedem Öffnen neu. In den Einstellungen stehen nächste und letzte Meldung, und ein Knopf sendet sofort.
+  - **Xiaomi/Redmi/Poco (HyperOS/MIUI):** Ohne „Autostart“ stellt das System Wecker und Hintergrundaufträge geschlossener
+    Apps nicht zu. In den Einstellungen erscheint dann ein Hinweis mit Knöpfen zu Autostart und App-Einstellungen
+    (Akku: „Keine Einschränkungen“).
     Scheitert der Abruf, versucht `DailyService` es erneut, sobald Netz da ist (höchstens 3 Stunden lang). Nach
     Neustart, Update oder Zeitumstellung stellt `BootReceiver` die Wecker neu.
   - 20 Uhr als Standard: Dann liegt der ICON-D2-Lauf von 15 UTC sicher vor (verfügbar etwa 18:30 MEZ bzw.
