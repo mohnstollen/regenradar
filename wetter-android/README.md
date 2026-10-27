@@ -44,6 +44,22 @@ eingebetteten Seiten wie Windy.
   z. B. „Landkreis Forchheim, 15 km nördlich, bis 20:00 Uhr“. Ist die Warnung nicht mehr aktiv, wird dieselbe
   Benachrichtigung durch „Aufgehoben: …“ ersetzt. Das eigene Gebiet meldet bereits die Ortswarnung.
 - Die Web-App meldet in der Android-App keinen Regen mehr selbst; das übernimmt die App mit den Optionen oben.
+- **Tagesvorhersage** (`DailyForecast`, `DailyAlarm`):
+  - Abends für morgen und/oder morgens für heute zur gewählten Uhrzeit (Standard 20:00 bzw. 6:30 Uhr).
+  - Inhalt: Textprognose aus DWD ICON-D2 (Open-Meteo, außerhalb des ICON-D2-Gebiets ICON kombiniert) mit
+    Winterhinweisen und den DWD-Warnungen für den Tag.
+  - Der Text entsteht wie `buildDayText()`/`buildWinter()` in `app.js`. Ändert sich dort etwas, muss es hier
+    nachgezogen werden. Ein Vergleichstest mit Zufallsdaten muss Wort für Wort gleiche Texte liefern.
+  - Ort: der zuletzt per GPS ermittelte Standort („Mein Standort“), ohne Hintergrund-Standortberechtigung, oder ein Favorit.
+  - Genauer Wecker (`setExactAndAllowWhileIdle`, Berechtigung `USE_EXACT_ALARM`), der auch im Energiesparmodus weckt.
+    Die App stellt ihn bei jedem Öffnen neu. In den Einstellungen stehen nächste und letzte Meldung, und ein Knopf sendet sofort.
+  - **Xiaomi/Redmi/Poco (HyperOS/MIUI):** Ohne „Autostart“ stellt das System Wecker und Hintergrundaufträge geschlossener
+    Apps nicht zu. In den Einstellungen erscheint dann ein Hinweis mit Knöpfen zu Autostart und App-Einstellungen
+    (Akku: „Keine Einschränkungen“).
+    Scheitert der Abruf, versucht `DailyService` es erneut, sobald Netz da ist (höchstens 3 Stunden lang). Nach
+    Neustart, Update oder Zeitumstellung stellt `BootReceiver` die Wecker neu.
+  - 20 Uhr als Standard: Dann liegt der ICON-D2-Lauf von 15 UTC sicher vor (verfügbar etwa 18:30 MEZ bzw.
+    19:30 MESZ). Der 18-UTC-Lauf kommt erst gegen 21:30 bzw. 22:30 Uhr.
 
 ## Widgets
 

@@ -11,7 +11,7 @@
  * Pollen:      DWD Pollenflug-Gefahrenindex, außerhalb DE Open-Meteo/CAMS
  */
 'use strict';
-const APP_VERSION = '3.11.0';
+const APP_VERSION = '3.12.1';
 const WIZARD_VERSION = '3.11';
 
 // ---------- Endpunkte ----------
@@ -92,7 +92,8 @@ const DEFAULTS = {
   notify: false, warnNotify: true, autoLocate: true, mapMode: 'radar', model: 'icon_d2', rangeH: 12,
   pollen: POLLEN.map(p => p.k), pollenRegion: 'auto', pollenHideZero: false,
   showFeels: true, showDew: true, layout: null, layoutSeen: [], wizardFor: null, theme: 'system', scene: true, glass: 84,
-  rainRadius: 10, rainMin: 'all', stormNotify: false, stormRadius: 50
+  rainRadius: 10, rainMin: 'all', stormNotify: false, stormRadius: 50,
+  dailyEve: false, dailyEveTime: '20:00', dailyMorn: false, dailyMornTime: '06:30', dailyPlace: 'gps', gpsLoc: null
 };
 let S = (() => {
   try { const s = Object.assign({}, DEFAULTS, JSON.parse(localStorage.getItem(LS) || '{}')); s.favs = Array.isArray(s.favs) ? s.favs : []; return s; }
@@ -110,7 +111,14 @@ const native = (cmd, ...args) => { try { return JSON.parse(prompt('wetterapp:' +
 // Standort und Schalter für die Hintergrundprüfung (Warnungen, Regen) der App
 function syncNative() {
   if (NATIVE) native('sync', { lat: S.loc?.lat ?? null, lon: S.loc?.lon ?? null, name: S.loc?.name ?? '', notify: S.notify, warnNotify: S.warnNotify, theme: S.theme,
-    rainRadius: S.rainRadius, rainMin: S.rainMin, stormNotify: S.stormNotify, stormRadius: S.stormRadius });
+    rainRadius: S.rainRadius, rainMin: S.rainMin, stormNotify: S.stormNotify, stormRadius: S.stormRadius,
+    dailyEve: S.dailyEve, dailyEveTime: S.dailyEveTime, dailyMorn: S.dailyMorn, dailyMornTime: S.dailyMornTime, dailyPlace: dailyPlace() });
+}
+// Ort der Tagesvorhersage: zuletzt per GPS ermittelter Standort (sonst der angezeigte Ort) oder ein Favorit
+function dailyPlace() {
+  const fav = S.favs.find(f => f.id === S.dailyPlace);
+  const p = fav || S.gpsLoc || S.loc;
+  return p ? { lat: p.lat, lon: p.lon, name: p.name || '' } : null;
 }
 const notifyPermission = () => NATIVE ? native('permission') : ('Notification' in window ? Notification.permission : 'denied');
 function requestNotifyPermission() {
@@ -845,8 +853,8 @@ async function loadDayText(lat, lon) {
   }
   renderWinter(buildWinter(res.rows, res.elevation, Date.now()));
 }
-function buildDayText(rows, now) {
-  const tomorrow = new Date(now).getHours() >= 20;
+// tomorrow: true = nächster Tag (Standard ab 20 Uhr). Gleiche Logik in wetter-android DailyForecast.dayText() – dort nachziehen.
+function buildDayText(rows, now, tomorrow = new Date(now).getHours() >= 20) {
   const base = addDays(dayStart(now), tomorrow ? 1 : 0);
   const word = tomorrow ? 'Morgen' : 'Heute';
   const PER = [{ k: 'V', a: 6, b: 12 }, { k: 'N', a: 12, b: 18 }, { k: 'A', a: 18, b: 24 }];
@@ -1455,6 +1463,7 @@ function locate() {
     const lat = p.coords.latitude, lon = p.coords.longitude;
     const fav = S.favs.find(f => sameLoc(f, { lat, lon }));
     if (fav) loadFav(fav); else { S.station = null; setLocation(lat, lon, await reverseGeocode(lat, lon)); }
+    S.gpsLoc = { lat, lon, name: S.loc?.name || '' }; save();   // für die Tagesvorhersage „Mein Standort“
   }, () => { if (S.loc) toast(`Standort nicht ermittelbar – verwende „${S.loc.name}“.`); else { toast('Standort nicht ermittelbar – bitte Ort suchen.'); openSearch(); } },
   { timeout: 15000, maximumAge: 5 * MIN });
 }
@@ -1537,7 +1546,7 @@ function initSettings() {
 
 // Benachrichtigungen: Einstellungen und Einrichtungsassistent teilen sich die Bedienelemente (data-key).
 // Umkreis, Stärke und Unwetter im Umkreis gibt es nur in der Android-App (Hintergrundprüfung).
-const NOTIFY_KEYS = ['notify', 'warnNotify', 'stormNotify'];
+const NOTIFY_KEYS = ['notify', 'warnNotify', 'stormNotify', 'dailyEve', 'dailyMorn'];
 function initNotifyControls() {
   $('#wizNotify').appendChild($('#notifyBlock').cloneNode(true)).removeAttribute('id');
   document.querySelectorAll('.notify-block [data-key]').forEach(el => el.onchange = async () => {
@@ -1548,13 +1557,42 @@ function initNotifyControls() {
     S[key] = el.type === 'checkbox' ? el.checked : 'num' in el.dataset ? Number(el.value) : el.value;
     save(); syncNotifyControls();
   });
+  document.querySelectorAll('.notify-block [data-daily-test]').forEach(b => b.onclick = () => {
+    toast('Tagesvorhersage wird abgerufen …');
+    native('dailyTest', b.dataset.dailyTest === 'eve');
+  });
+  document.querySelectorAll('.notify-block [data-open]').forEach(b => b.onclick = () => native('openSettings', b.dataset.open));
+  window.__dailyTest = (msg) => { toast(msg, 6000); syncNotifyControls(); };
   syncNotifyControls();
 }
+// Status der Tagesvorhersage aus der Android-App: nächste und letzte Meldung
+function dailyStatusText() {
+  const st = NATIVE && native('dailyStatus');
+  if (!st) return '';
+  const part = (k, label) => {
+    if (!S[k]) return '';
+    const s = st[k] || {}, bits = [];
+    bits.push(s.next ? `nächste ${whenTxt(s.next)}` : 'nicht geplant');
+    if (s.lastAt) bits.push(`zuletzt ${whenTxt(s.lastAt)}: ${s.last}`);
+    return `${label}: ${bits.join(' · ')}`;
+  };
+  return [part('dailyEve', 'Abends'), part('dailyMorn', 'Morgens'), st.exact ? '' : 'Genaue Wecker sind nicht erlaubt – die Meldung kann sich verspäten.'].filter(Boolean).join('\n');
+}
 function syncNotifyControls() {
+  document.querySelectorAll('.notify-block [data-key=dailyPlace]').forEach(sel => {
+    const gps = S.gpsLoc ? ` (zuletzt: ${S.gpsLoc.name || 'GPS'})` : '';
+    sel.innerHTML = `<option value="gps">Mein Standort${esc(gps)}</option>` + S.favs.map(f => `<option value="${esc(f.id)}">★ ${esc(f.name)}</option>`).join('');
+  });
+  if (S.dailyPlace !== 'gps' && !S.favs.some(f => f.id === S.dailyPlace)) S.dailyPlace = 'gps';   // Favorit gelöscht
   document.querySelectorAll('.notify-block [data-key]').forEach(el => { if (el.type === 'checkbox') el.checked = !!S[el.dataset.key]; else el.value = String(S[el.dataset.key]); });
   document.querySelectorAll('.notify-block .native-only').forEach(el => { el.hidden = !NATIVE; });
   document.querySelectorAll('.notify-block .browser-only').forEach(el => { el.hidden = NATIVE; });
-  document.querySelectorAll('.notify-block [data-show]').forEach(el => { el.hidden = !NATIVE || !S[el.dataset.show]; });
+  document.querySelectorAll('.notify-block [data-show]').forEach(el => { el.hidden = !NATIVE || !el.dataset.show.split(' ').some(k => S[k]); });
+  if (NATIVE && (S.dailyEve || S.dailyMorn)) {
+    const txt = dailyStatusText(), xiaomi = !!native('dailyStatus')?.xiaomi;
+    document.querySelectorAll('.notify-block .daily-status').forEach(el => { el.textContent = txt; });
+    document.querySelectorAll('.notify-block .daily-xiaomi').forEach(el => { el.hidden = !xiaomi; });
+  }
 }
 
 // ---------- PWA ----------
@@ -1608,7 +1646,8 @@ function init() {
   $('#btnPlacesSearch').onclick = () => { $('#dlgPlaces').close(); openSearch(); };
   $('#btnClosePlaces').onclick = () => $('#dlgPlaces').close();
   $('#btnLocate').onclick = locate; $('#btnSearch').onclick = openSearch; $('#btnRefresh').onclick = refresh;
-  $('#btnSettings').onclick = () => { $('#satFound').textContent = `Gefunden: Tag ${SAT.day}, Nacht ${SAT.night} (${SAT.source})`; $('#dlgSettings').showModal(); };
+  $('#btnSettings').onclick = () => {
+    syncNotifyControls(); $('#satFound').textContent = `Gefunden: Tag ${SAT.day}, Nacht ${SAT.night} (${SAT.source})`; $('#dlgSettings').showModal(); };
   $('#btnCloseSearch').onclick = () => $('#dlgSearch').close();
   $('#btnStation').onclick = openStationDialog; $('#btnCloseStation').onclick = () => $('#dlgStation').close();
   $('#searchForm').onsubmit = (e) => { e.preventDefault(); doSearch(); };

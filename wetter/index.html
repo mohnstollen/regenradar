@@ -282,6 +282,32 @@
           </select>
         </label>
       </div>
+      <label class="check native-only" hidden><input type="checkbox" data-key="dailyEve"> Am Abend die Vorhersage für morgen</label>
+      <div class="subopts" data-show="dailyEve" hidden>
+        <label>Uhrzeit <input type="time" data-key="dailyEveTime"></label>
+      </div>
+      <label class="check native-only" hidden><input type="checkbox" data-key="dailyMorn"> Am Morgen die Vorhersage für heute</label>
+      <div class="subopts" data-show="dailyMorn" hidden>
+        <label>Uhrzeit <input type="time" data-key="dailyMornTime"></label>
+      </div>
+      <div class="subopts" data-show="dailyEve dailyMorn" hidden>
+        <label>Vorhersage für <select data-key="dailyPlace"></select></label>
+        <p class="small muted">Text aus DWD ICON-D2 mit Winterhinweisen und DWD-Warnungen für den Tag. Um 20 Uhr liegt der Modelllauf vom
+          Nachmittag sicher vor; neuere Läufe kommen erst gegen 21:30 (Winter) bzw. 22:30 Uhr (Sommer).</p>
+        <p class="small daily-status"></p>
+        <div class="row">
+          <button type="button" class="secondary" data-daily-test="eve" data-show="dailyEve">Abendmeldung jetzt testen</button>
+          <button type="button" class="secondary" data-daily-test="morn" data-show="dailyMorn">Morgenmeldung jetzt testen</button>
+        </div>
+        <div class="daily-xiaomi" hidden>
+          <p class="small">Xiaomi, Redmi, Poco: Damit die Meldungen auch bei geschlossener App kommen, für „Wetter“ <b>Autostart</b> erlauben
+            und unter Akku-Sparmodus <b>Keine Einschränkungen</b> wählen.</p>
+          <div class="row">
+            <button type="button" class="secondary" data-open="autostart">Autostart öffnen</button>
+            <button type="button" class="secondary" data-open="app">App-Einstellungen</button>
+          </div>
+        </div>
+      </div>
       <p class="small muted native-only" hidden>Die App prüft auch im Hintergrund etwa alle 15 Minuten, wenn sie geschlossen ist.</p>
       <p class="small muted browser-only" hidden>Im Browser kommen Benachrichtigungen nur, solange die Seite geöffnet ist.</p>
       </div>

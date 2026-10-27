@@ -17,7 +17,7 @@ import org.json.JSONException;
 final class Notifier {
     static final String PREFS = "wetter";
     static final String POST_NOTIFICATIONS = "android.permission.POST_NOTIFICATIONS";
-    private static final String CH_RAIN = "rain", CH_WARN = "warn";
+    static final String CH_RAIN = "rain", CH_WARN = "warn", CH_DAILY = "daily";
     private static final long RAIN_PAUSE = 60 * 60 * 1000L;   // wie LS_RAIN in app.js
     private static final int MAX_SEEN = 100;
 
@@ -39,8 +39,11 @@ final class Notifier {
         rain.setDescription("Hinweis, wenn laut DWD-Radarvorhersage Regen naht");
         NotificationChannel warn = new NotificationChannel(CH_WARN, "DWD-Warnungen", NotificationManager.IMPORTANCE_HIGH);
         warn.setDescription("Neue amtliche Warnungen des Deutschen Wetterdienstes");
+        NotificationChannel daily = new NotificationChannel(CH_DAILY, "Tagesvorhersage", NotificationManager.IMPORTANCE_DEFAULT);
+        daily.setDescription("Vorhersage am Abend für morgen bzw. am Morgen für heute");
         nm.createNotificationChannel(rain);
         nm.createNotificationChannel(warn);
+        nm.createNotificationChannel(daily);
     }
 
     /**
@@ -73,6 +76,10 @@ final class Notifier {
 
     /** Zeigt bzw. ersetzt die Benachrichtigung mit diesem Tag – ohne Duplikatsperre. */
     static void post(Context c, String tag, String title, String body, boolean warn) {
+        post(c, tag, title, body, warn ? CH_WARN : CH_RAIN);
+    }
+
+    static void post(Context c, String tag, String title, String body, String channel) {
         if (!allowed(c)) return;
         long now = System.currentTimeMillis();
         NotificationManager nm = c.getSystemService(NotificationManager.class);
@@ -80,7 +87,7 @@ final class Notifier {
         Intent open = new Intent(c, MainActivity.class).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK | Intent.FLAG_ACTIVITY_SINGLE_TOP);
         PendingIntent pi = PendingIntent.getActivity(c, 0, open, PendingIntent.FLAG_IMMUTABLE | PendingIntent.FLAG_UPDATE_CURRENT);
         Notification.Builder b = Build.VERSION.SDK_INT >= 26
-            ? new Notification.Builder(c, warn ? CH_WARN : CH_RAIN)
+            ? new Notification.Builder(c, channel)
             : legacyBuilder(c);
         b.setSmallIcon(R.drawable.ic_stat)
             .setColor(0xff0b5cab)

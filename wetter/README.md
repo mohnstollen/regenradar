@@ -1,4 +1,14 @@
-# Wetter-App (PWA) – Version 3.11.0
+# Wetter-App (PWA) – Version 3.12.1
+
+## Neu in 3.12.1
+- Android-App, Tagesvorhersage: genauer Wecker statt eines ungenauen; Wecker werden bei jedem Öffnen der App neu gestellt
+- Statusanzeige (nächste und letzte Meldung mit Ergebnis) und Knopf „jetzt testen“ in den Einstellungen
+- Hinweis für Xiaomi/Redmi/Poco: Autostart erlauben, Akku „Keine Einschränkungen“ – mit Knöpfen zu den Einstellungen
+
+## Neu in 3.12
+- Android-App: Tagesvorhersage als Benachrichtigung – abends für morgen (Standard 20:00 Uhr) und/oder morgens für heute
+  (Standard 6:30 Uhr), Uhrzeit frei wählbar. Inhalt: Textprognose aus DWD ICON-D2 mit Winterhinweisen und den
+  DWD-Warnungen für den Tag. Ort: zuletzt per GPS ermittelter Standort oder ein Favorit. Auch im Einrichtungsassistenten.
 
 ## Neu in 3.11
 - Benachrichtigungen lassen sich schon im Einrichtungsassistenten beim ersten Start festlegen, in der Android-App
