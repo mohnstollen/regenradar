@@ -2,7 +2,8 @@
 
 **Download der neuesten Version:** https://github.com/mohnstollen/regenradar/releases/latest/download/wetter.apk
 
-Der Link zeigt immer auf das neueste Release. Der Workflow `.github/workflows/release-apk.yml` legt es automatisch an,
+Der Link zeigt immer auf das neueste Release. In der App: Einstellungen → App → „Nach Updates suchen“ (fragt die GitHub-API
+nach dem neuesten Release, zeigt die Neuerungen und lädt bei Bedarf die APK). Beim Start prüft sie außerdem einmal am Tag. Der Workflow `.github/workflows/release-apk.yml` legt es automatisch an,
 sobald eine neue `wetter-<version>.apk` auf `main` landet. Ein manueller Start ist unter Actions → „APK
 veröffentlichen“ → „Run workflow“ möglich. Die APK installiert sich als Update über eine vorhandene Version.
 
@@ -76,7 +77,7 @@ Auf dem Startbildschirm gibt es sechs Widgets (lange auf den Startbildschirm tip
   - die nächsten 5 Tage mit Symbol, Höchst-/Tiefstwert und Niederschlag (Tageswerte wie in der 10-Tage-Übersicht)
   - Mit Warnung braucht es etwa 240 dp Höhe. Wird es auf einem Startbildschirm unten knapp, das Widget auf 4×4 ziehen.
 
-- **Temperaturverlauf 12 h (4×2):** die Temperaturkurve der nächsten 12 Stunden aus DWD ICON-D2 wie im Diagramm der
+- **Temperaturverlauf (4×2):** die Temperaturkurve der nächsten 12 Stunden aus DWD ICON-D2 wie im Diagramm der
   App – Werte alle 3 Stunden sowie Tiefst- und Höchstwert, Zeitachse „jetzt, 12 Uhr …“
 - **Temperaturverlauf mit Sonne und Regen (4×2):** dazu unter der Zeitachse je Stunde Sonnenschein (Balken) und
   Regenwahrscheinlichkeit (aus DWD MOSMIX, wie in der App)

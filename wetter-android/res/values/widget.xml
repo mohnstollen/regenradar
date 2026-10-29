@@ -9,7 +9,7 @@
     <string name="widget_wide_desc">Aktuelles Wetter, Regen in den nächsten 2 Stunden und die nächsten Stunden</string>
     <color name="w_line">#1F1C2733</color>
     <string name="widget_large_desc">Aktuelles Wetter, DWD-Warnungen, Regen in 2 Stunden, die nächsten Stunden und 5 Tage</string>
-    <string name="widget_chart_desc">Temperaturverlauf der nächsten 12 Stunden (DWD ICON-D2)</string>
-    <string name="widget_chart_plus_desc">Temperaturverlauf der nächsten 12 Stunden mit Sonnenschein und Regenwahrscheinlichkeit</string>
+    <string name="widget_chart_desc">Temperaturverlauf der nächsten 12, 24 oder 48 Stunden (DWD ICON-D2)</string>
+    <string name="widget_chart_plus_desc">Temperaturverlauf der nächsten 12, 24 oder 48 Stunden mit Sonnenschein und Regenwahrscheinlichkeit</string>
     <string name="widget_combo_desc">Aktuelles Wetter, DWD-Warnung und Temperaturverlauf mit Sonne, Regen und Wind (12, 24 oder 48 Stunden)</string>
 </resources>

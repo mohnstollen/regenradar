@@ -11,7 +11,7 @@
  * Pollen:      DWD Pollenflug-Gefahrenindex, außerhalb DE Open-Meteo/CAMS
  */
 'use strict';
-const APP_VERSION = '3.14.0';
+const APP_VERSION = '3.15.0';
 const WIZARD_VERSION = '3.11';
 
 // ---------- Endpunkte ----------
@@ -1595,6 +1595,62 @@ function syncNotifyControls() {
   }
 }
 
+// ---------- Updates der Android-App (GitHub-Release) ----------
+// Die Web-App im Browser aktualisiert sich über den Service Worker; die Android-App braucht eine neue APK.
+const RELEASE_API = 'https://api.github.com/repos/mohnstollen/regenradar/releases/latest';
+const APK_URL = 'https://github.com/mohnstollen/regenradar/releases/latest/download/wetter.apk';
+const LS_UPD = 'wetterapp.updateCheck';
+const verCmp = (a, b) => { const x = a.split('.').map(Number), y = b.split('.').map(Number); for (let i = 0; i < 3; i++) if ((x[i] || 0) !== (y[i] || 0)) return (x[i] || 0) - (y[i] || 0); return 0; };
+function downloadApk() {   // als Link öffnen – die App gibt ihn an den Browser weiter, der die APK lädt
+  const a = document.createElement('a'); a.href = APK_URL; a.rel = 'noopener'; document.body.appendChild(a); a.click(); a.remove();
+}
+// Release-Notizen ohne Markdown-Zeichen und ohne die Download-Zeile
+const releaseNotes = (body) => String(body || '').split('\n').filter(l => l.trim() && !/^Download:/.test(l.trim()))
+  .map(l => l.replace(/`/g, '').replace(/\*\*/g, '').replace(/^\s*-\s+/, '• ').replace(/^\s{2,}/, '  ')).join('\n');
+function showUpdate(st) {
+  const info = $('#updateInfo'), newer = st && st.latest && verCmp(st.latest, APP_VERSION) > 0;
+  $('#updateDl').hidden = !newer;
+  if (!st) { info.hidden = true; return; }
+  info.hidden = false;
+  info.textContent = st.error ? `Prüfung nicht möglich (${st.error}).`
+    : newer ? `Version ${st.latest} ist verfügbar – installiert sich als Update, Einstellungen bleiben erhalten.${st.notes ? '\n\nNeu:\n' + st.notes : ''}`
+    : `Du hast die neueste Version (${APP_VERSION}).`;
+}
+async function checkUpdate(manual) {
+  let st;
+  try {
+    const r = await fetch(RELEASE_API, { cache: 'no-store', headers: { Accept: 'application/vnd.github+json' } });
+    if (!r.ok) throw new Error(`HTTP ${r.status}`);
+    const j = await r.json();
+    st = { ts: Date.now(), latest: String(j.tag_name || '').replace(/^v/, ''), notes: releaseNotes(j.body) };
+    let old = {}; try { old = JSON.parse(localStorage.getItem(LS_UPD) || '{}'); } catch { }
+    localStorage.setItem(LS_UPD, JSON.stringify({ ...st, told: old.told }));
+    // automatische Prüfung: auf eine neue Version nur einmal hinweisen
+    if (!manual && verCmp(st.latest, APP_VERSION) > 0 && old.told !== st.latest) {
+      localStorage.setItem(LS_UPD, JSON.stringify({ ...st, told: st.latest }));
+      toast(`Neue App-Version ${st.latest} verfügbar.`, 12000, { label: 'Herunterladen', fn: downloadApk });
+    }
+  } catch (e) {
+    st = { error: /fetch|network/i.test(e.message) ? 'keine Verbindung' : e.message };
+  }
+  if (manual || !st.error) showUpdate(st);
+  return st;
+}
+function initUpdate() {
+  $('#updateBox').hidden = !NATIVE;
+  if (!NATIVE) return;
+  $('#installedVer').textContent = APP_VERSION;
+  $('#btnUpdateDl').onclick = downloadApk;
+  $('#btnUpdateCheck').onclick = async () => {
+    const b = $('#btnUpdateCheck'); b.disabled = true; b.textContent = 'Suche …';
+    await checkUpdate(true);
+    b.disabled = false; b.textContent = 'Nach Updates suchen';
+  };
+  let last = {}; try { last = JSON.parse(localStorage.getItem(LS_UPD) || '{}'); } catch { }
+  if (last.latest) showUpdate(last);
+  if (!last.ts || Date.now() - last.ts > 24 * HOUR) setTimeout(() => checkUpdate(false), 4000);   // einmal am Tag beim Start
+}
+
 // ---------- PWA ----------
 let installEvt = null;
 function initPwa() {
@@ -1603,7 +1659,7 @@ function initPwa() {
   const hint = $('#installHint');
   // In der Android-App oder als installierte PWA gibt es nichts mehr zu installieren
   $('#installBox').hidden = NATIVE || isStandalone;
-  $('#updateBox').hidden = !NATIVE;
+  initUpdate();
   if (isStandalone) hint.textContent = 'Die App ist installiert.';
   else if (ios) hint.textContent = 'iPhone/iPad: In Safari auf „Teilen“ und dann „Zum Home-Bildschirm“ tippen.';
   else hint.textContent = 'Falls der Button nichts tut: im Browsermenü „App installieren“ bzw. „Zum Startbildschirm hinzufügen“ wählen.';

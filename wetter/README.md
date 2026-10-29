@@ -1,4 +1,10 @@
-# Wetter-App (PWA) – Version 3.14.0
+# Wetter-App (PWA) – Version 3.15.0
+
+## Neu in 3.15
+- Android-App: Einstellungen → App (weiter oben) mit installierter Version und Knopf „Nach Updates suchen“. Gibt es
+  eine neuere Version, erscheinen ihre Neuerungen und „Jetzt herunterladen“ (fester Release-Link).
+- Beim Start prüft die App einmal am Tag auf eine neue Version und weist einmal je Version darauf hin
+- Widget „Temperaturverlauf 12 h“ heißt jetzt „Temperaturverlauf“ (Zeitraum wählbar)
 
 ## Neu in 3.14
 - Android-App: Kombi-Widget „Wetter mit Temperaturverlauf“ (4×3) – aktuelle Temperatur und Beschreibung, DWD-Warnung,

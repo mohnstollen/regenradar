@@ -239,6 +239,14 @@
       </label>
       <button type="button" class="secondary" id="btnLayout"></button>
 
+      <div id="updateBox" hidden>
+        <h4>App</h4>
+        <p class="small">Installierte Version: <b id="installedVer"></b></p>
+        <button type="button" class="secondary" id="btnUpdateCheck">Nach Updates suchen</button>
+        <div class="update-info small" id="updateInfo" hidden></div>
+        <div class="row" id="updateDl" hidden><button type="button" id="btnUpdateDl">Jetzt herunterladen</button></div>
+      </div>
+
       <h4>Standort &amp; Aktualisierung</h4>
       <label class="check"><input type="checkbox" id="setAuto"> Beim Start den GPS-Standort verwenden (sonst zuletzt angezeigten Ort)</label>
       <label>Daten aktualisieren
@@ -340,12 +348,6 @@
         <button type="button" id="btnInstall2" class="secondary">Als App installieren</button>
         <p class="small muted" id="installHint"></p>
       </div>
-      <div id="updateBox" hidden>
-        <h4>App</h4>
-        <p class="small"><a href="https://github.com/mohnstollen/regenradar/releases/latest/download/wetter.apk">Neueste Version der App herunterladen</a>
-          <span class="muted">– installiert sich als Update, Einstellungen bleiben erhalten.</span></p>
-      </div>
-
       <div class="row end"><button value="close">Fertig</button></div>
     </form>
   </dialog>
