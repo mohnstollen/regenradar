@@ -63,7 +63,7 @@ eingebetteten Seiten wie Windy.
 
 ## Widgets
 
-Auf dem Startbildschirm gibt es fünf Widgets (lange auf den Startbildschirm tippen → Widgets → Wetter):
+Auf dem Startbildschirm gibt es sechs Widgets (lange auf den Startbildschirm tippen → Widgets → Wetter):
 
 - **Wetter klein (2×1):** Wettersymbol, Temperatur, Ort
 - **Wetter mit Regen und Stunden (4×2):**
@@ -80,6 +80,15 @@ Auf dem Startbildschirm gibt es fünf Widgets (lange auf den Startbildschirm tip
   App – Werte alle 3 Stunden sowie Tiefst- und Höchstwert, Zeitachse „jetzt, 12 Uhr …“
 - **Temperaturverlauf mit Sonne und Regen (4×2):** dazu unter der Zeitachse je Stunde Sonnenschein (Balken) und
   Regenwahrscheinlichkeit (aus DWD MOSMIX, wie in der App)
+
+- **Wetter mit Temperaturverlauf (4×3):** oben aktuelle Temperatur, Beschreibung, Ort, Höchst-/Tiefstwert und die
+  wichtigste DWD-Warnung, darunter der Temperaturverlauf mit Sonne, Regenwahrscheinlichkeit und Wind (km/h im Mittel,
+  Pfeil in Zugrichtung)
+
+Bei allen drei Diagramm-Widgets ist der Zeitraum wählbar: 12, 24 oder 48 Stunden. Die Auswahl erscheint beim Hinzufügen
+und ab Android 12 über „Widget bearbeiten“. Bei 24/48 h fasst jedes der 12 Felder unten 2/4 Stunden zusammen. Die
+Kurve trägt dann wie das App-Diagramm je Tag Höchst- und Tiefstwert und markiert den Tageswechsel. 48 h nutzt
+„ICON kombiniert“, weil ICON-D2 nur etwa 48 h ab Modellstart reicht.
 
 Die Diagramme zeichnet `ChartImage` als Bild in der tatsächlichen Größe des Widgets und bei Größenänderung neu. Die
 Vorschaubilder für die Widget-Auswahl (`res/drawable-nodpi/widget_chart*_preview.png`) stammen aus demselben Zeichencode.

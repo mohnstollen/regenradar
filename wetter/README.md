@@ -1,4 +1,9 @@
-# Wetter-App (PWA) – Version 3.13.0
+# Wetter-App (PWA) – Version 3.14.0
+
+## Neu in 3.14
+- Android-App: Kombi-Widget „Wetter mit Temperaturverlauf“ (4×3) – aktuelle Temperatur und Beschreibung, DWD-Warnung,
+  darunter der Temperaturverlauf mit Sonne, Regenwahrscheinlichkeit und Wind
+- Diagramm-Widgets: Zeitraum 12, 24 oder 48 Stunden, Auswahl beim Hinzufügen und über „Widget bearbeiten“
 
 ## Neu in 3.13
 - Android-App: zwei Diagramm-Widgets mit dem Temperaturverlauf der nächsten 12 Stunden (DWD ICON-D2), gezeichnet wie

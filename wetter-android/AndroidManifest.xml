@@ -51,6 +51,15 @@
             <intent-filter><action android:name="android.appwidget.action.APPWIDGET_UPDATE" /></intent-filter>
             <meta-data android:name="android.appwidget.provider" android:resource="@xml/widget_chart_plus_info" />
         </receiver>
+        <receiver android:name=".WidgetCombo" android:exported="false" android:label="Wetter mit Temperaturverlauf">
+            <intent-filter><action android:name="android.appwidget.action.APPWIDGET_UPDATE" /></intent-filter>
+            <meta-data android:name="android.appwidget.provider" android:resource="@xml/widget_combo_info" />
+        </receiver>
+        <!-- Zeitraum der Diagramm-Widgets wählen; der Launcher startet das beim Hinzufügen bzw. „Widget bearbeiten“ -->
+        <activity android:name=".WidgetConfig" android:exported="true" android:theme="@android:style/Theme.Translucent.NoTitleBar"
+            android:excludeFromRecents="true">
+            <intent-filter><action android:name="android.appwidget.action.APPWIDGET_CONFIGURE" /></intent-filter>
+        </activity>
         <receiver android:name=".DailyAlarm" android:exported="false" />
         <receiver android:name=".BootReceiver" android:exported="true">
             <intent-filter>

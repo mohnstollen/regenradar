@@ -20,6 +20,11 @@ public class WidgetChartPlus extends AppWidgetProvider {
     }
 
     @Override
+    public void onDeleted(Context c, int[] ids) {
+        for (int id : ids) Notifier.prefs(c).edit().remove("chartHours_" + id).apply();
+    }
+
+    @Override
     public void onDisabled(Context c) {
         CheckService.update(c);
     }
