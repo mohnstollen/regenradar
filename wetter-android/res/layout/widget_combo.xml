@@ -1,0 +1,37 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Kombi-Widget: feste Höhen (Kopf 46 dp, Warnung 22 + 5 dp) – Widgets.buildCombo() rechnet damit die Diagrammhöhe aus -->
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:id="@+id/root" android:layout_width="match_parent" android:layout_height="match_parent"
+    android:orientation="vertical" android:paddingTop="8dp" android:paddingBottom="6dp" android:background="@drawable/widget_bg">
+    <LinearLayout android:layout_width="match_parent" android:layout_height="46dp"
+        android:orientation="horizontal" android:gravity="center_vertical" android:paddingStart="14dp" android:paddingEnd="14dp">
+        <ImageView android:id="@+id/icon" android:layout_width="40dp" android:layout_height="40dp"
+            android:src="@drawable/wx_fog" android:contentDescription="Wetter" />
+        <LinearLayout android:layout_width="0dp" android:layout_height="wrap_content" android:layout_weight="1"
+            android:orientation="vertical" android:layout_marginStart="8dp">
+            <TextView android:id="@+id/temp" android:layout_width="wrap_content" android:layout_height="wrap_content"
+                android:text="4°" android:textSize="26sp" android:textColor="@color/w_text" android:textStyle="bold" android:includeFontPadding="false" />
+            <TextView android:id="@+id/desc" android:layout_width="wrap_content" android:layout_height="wrap_content"
+                android:text="Nebel · gefühlt 1°" android:textSize="12sp" android:textColor="@color/w_muted" android:includeFontPadding="false"
+                android:singleLine="true" android:ellipsize="end" android:layout_marginTop="2dp" />
+        </LinearLayout>
+        <LinearLayout android:layout_width="wrap_content" android:layout_height="wrap_content"
+            android:orientation="vertical" android:gravity="end" android:layout_marginStart="8dp">
+            <TextView android:id="@+id/place" android:layout_width="wrap_content" android:layout_height="wrap_content"
+                android:text="Erlangen" android:textSize="13sp" android:textColor="@color/w_text" android:textStyle="bold" android:includeFontPadding="false"
+                android:singleLine="true" android:ellipsize="end" android:maxWidth="150dp" />
+            <TextView android:id="@+id/hilo" android:layout_width="wrap_content" android:layout_height="wrap_content"
+                android:text="↑ 9°  ↓ 2°" android:textSize="12sp" android:textColor="@color/w_muted" android:includeFontPadding="false" android:layout_marginTop="3dp" />
+            <TextView android:id="@+id/updated" android:layout_width="wrap_content" android:layout_height="wrap_content"
+                android:text="Stand 09:47" android:textSize="10sp" android:textColor="@color/w_muted" android:includeFontPadding="false" android:layout_marginTop="2dp" />
+        </LinearLayout>
+    </LinearLayout>
+    <TextView android:id="@+id/warn" android:layout_width="match_parent" android:layout_height="22dp"
+        android:layout_marginTop="5dp" android:layout_marginStart="14dp" android:layout_marginEnd="14dp"
+        android:paddingStart="8dp" android:paddingEnd="8dp" android:gravity="center_vertical"
+        android:background="@drawable/warn_minor" android:textColor="#4D4300" android:textSize="12sp" android:textStyle="bold"
+        android:singleLine="true" android:ellipsize="end" android:includeFontPadding="false" android:text="Amtliche WARNUNG vor NEBEL" />
+    <ImageView android:id="@+id/chart" android:layout_width="match_parent" android:layout_height="0dp" android:layout_weight="1"
+        android:layout_marginTop="2dp" android:scaleType="fitXY" android:src="@drawable/widget_combo_chart_preview"
+        android:contentDescription="Temperaturverlauf mit Sonne, Regen und Wind" />
+</LinearLayout>
