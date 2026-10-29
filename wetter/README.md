@@ -1,4 +1,9 @@
-# Wetter-App (PWA) – Version 3.12.1
+# Wetter-App (PWA) – Version 3.13.0
+
+## Neu in 3.13
+- Android-App: zwei Diagramm-Widgets mit dem Temperaturverlauf der nächsten 12 Stunden (DWD ICON-D2), gezeichnet wie
+  das Diagramm der App: „Temperaturverlauf 12 h“ und „Temperaturverlauf mit Sonne und Regen“ (zusätzlich je Stunde
+  Sonnenschein und Regenwahrscheinlichkeit aus DWD MOSMIX)
 
 ## Neu in 3.12.1
 - Android-App, Tagesvorhersage: genauer Wecker statt eines ungenauen; Wecker werden bei jedem Öffnen der App neu gestellt

@@ -66,7 +66,11 @@ final class Widgets {
     }
 
     static boolean any(Context c) {
-        return ids(c, WidgetSmall.class).length + ids(c, WidgetWide.class).length + ids(c, WidgetLarge.class).length > 0;
+        return ids(c, WidgetSmall.class).length + ids(c, WidgetWide.class).length + ids(c, WidgetLarge.class).length + charts(c) > 0;
+    }
+
+    private static int charts(Context c) {
+        return ids(c, WidgetChart.class).length + ids(c, WidgetChartPlus.class).length;
     }
 
     // ---------- Daten ----------
@@ -87,6 +91,7 @@ final class Widgets {
         } catch (Exception e) {
             return;   // ohne aktuelle Werte alten Stand behalten
         }
+        Map<Long, Double> probAt = new HashMap<>();   // Regenwahrscheinlichkeit aus MOSMIX, auch für die Diagramm-Widgets
         try {
             Calendar cal = Calendar.getInstance();
             cal.set(Calendar.HOUR_OF_DAY, 0); cal.set(Calendar.MINUTE, 0); cal.set(Calendar.SECOND, 0); cal.set(Calendar.MILLISECOND, 0);
@@ -97,6 +102,7 @@ final class Widgets {
             cal.add(Calendar.DAY_OF_MONTH, DAYS + 1);
             long to = large ? cal.getTimeInMillis() : Math.max(dayEnd, now + (SLOTS * STEP_H + 2) * 3600000L);
             JSONArray rows = BrightSky.hourly(lat, lon, dayStart, to);
+            probAt.clear();
             Map<Long, List<JSONObject>> byDay = new TreeMap<>();
             double hi = Double.NEGATIVE_INFINITY, lo = Double.POSITIVE_INFINITY;
             JSONArray hours = new JSONArray();
@@ -105,6 +111,7 @@ final class Widgets {
                 JSONObject r = rows.getJSONObject(i);
                 long ts = BrightSky.parseIso(r.getString("timestamp"));
                 double tt = r.optDouble("temperature", Double.NaN);
+                if (!r.isNull("precipitation_probability")) probAt.put(ts, r.optDouble("precipitation_probability"));
                 long day = startOfDay(ts - 1);   // Stundenwerte gelten für die Stunde davor (wie loadDays in app.js)
                 if (large && day >= dayEnd) {
                     if (!byDay.containsKey(day)) byDay.put(day, new ArrayList<JSONObject>());
@@ -134,6 +141,9 @@ final class Widgets {
         } catch (Exception ignored) { }
         if (ids(c, WidgetLarge.class).length > 0) {
             try { d.put("warn", topWarning(BrightSky.alerts(lat, lon))); } catch (Exception ignored) { }
+        }
+        if (charts(c) > 0) {
+            try { chartData(d, lat, lon, probAt, now); } catch (Exception ignored) { }
         }
         try { d.put("rain", rainText(nc)).put("rainNow", nc != null && (nc.raining || nc.eta >= 0)); } catch (JSONException ignored) { }
         Notifier.prefs(c).edit().putString(CACHE, d.toString()).apply();
@@ -196,6 +206,35 @@ final class Widgets {
             .put("sev", heat ? "heat" : WARN.containsKey(top.optString("severity")) ? top.optString("severity") : "minor");
     }
 
+    /** Diagramm-Widgets: Temperatur und Sonne aus ICON-D2 (wie das Diagramm der App), Regenwahrscheinlichkeit aus MOSMIX. */
+    private static void chartData(JSONObject d, double lat, double lon, Map<Long, Double> probAt, long now) throws Exception {
+        JSONArray out;
+        String model = "ICON-D2";
+        try { out = chartFrom(lat, lon, "icon_d2", probAt, now); }
+        catch (Exception e) { out = chartFrom(lat, lon, "icon_seamless", probAt, now); model = "ICON"; }   // außerhalb des ICON-D2-Gebiets
+        d.put("chart", out).put("chartModel", model);
+    }
+
+    private static JSONArray chartFrom(double lat, double lon, String model, Map<Long, Double> probAt, long now) throws Exception {
+        JSONObject h = BrightSky.getJSON(String.format(Locale.ROOT, "%s?latitude=%.4f&longitude=%.4f&hourly=temperature_2m,sunshine_duration&models=%s&timezone=auto&timeformat=unixtime&forecast_days=2",
+            DailyForecast.OM, lat, lon, model)).getJSONObject("hourly");
+        JSONArray time = h.getJSONArray("time"), temp = h.optJSONArray("temperature_2m"), sun = h.optJSONArray("sunshine_duration");
+        if (temp == null) temp = h.getJSONArray("temperature_2m_" + model);
+        if (sun == null) sun = h.optJSONArray("sunshine_duration_" + model);
+        JSONArray out = new JSONArray();
+        for (int i = 0; i < time.length(); i++) {
+            long t = time.getLong(i) * 1000;
+            if (t < now - 3 * 3600000L || t > now + 14 * 3600000L || temp.isNull(i)) continue;
+            JSONObject o = new JSONObject().put("t", t).put("temp", temp.getDouble(i));
+            if (sun != null && !sun.isNull(i)) o.put("sun", sun.getDouble(i) / 60);   // Sekunden → Minuten
+            Double p = probAt.get(t);
+            if (p != null) o.put("prob", p);
+            out.put(o);
+        }
+        if (out.length() < 8) throw new Exception("keine Daten");
+        return out;
+    }
+
     private static String rainText(BrightSky.Nowcast nc) {
         if (nc == null) return "";
         if (nc.raining) return nc.until >= 0 ? "Es regnet – vorbei in ca. " + nc.until + " min" : "Es regnet – hält über 2 Stunden an";
@@ -228,6 +267,34 @@ final class Widgets {
         if (small.length > 0) mgr.updateAppWidget(small, build(c, R.layout.widget_small));
         if (wide.length > 0) mgr.updateAppWidget(wide, build(c, R.layout.widget_wide));
         if (large.length > 0) mgr.updateAppWidget(large, build(c, R.layout.widget_large));
+        for (int id : ids(c, WidgetChart.class)) mgr.updateAppWidget(id, buildChart(c, mgr, id, false));
+        for (int id : ids(c, WidgetChartPlus.class)) mgr.updateAppWidget(id, buildChart(c, mgr, id, true));
+    }
+
+    /** Diagramm als Bild in der tatsächlichen Größe des Widgets (laut Launcher; im Hochformat Mindestbreite × Höchsthöhe). */
+    private static RemoteViews buildChart(Context c, AppWidgetManager mgr, int id, boolean extras) {
+        SharedPreferences p = Notifier.prefs(c);
+        JSONObject d;
+        try { d = new JSONObject(p.getString(CACHE, "{}")); } catch (JSONException e) { d = new JSONObject(); }
+        android.os.Bundle o = mgr.getAppWidgetOptions(id);
+        int wDp = o.getInt(AppWidgetManager.OPTION_APPWIDGET_MIN_WIDTH, 0), hDp = o.getInt(AppWidgetManager.OPTION_APPWIDGET_MAX_HEIGHT, 0);
+        if (wDp <= 0) wDp = 300;
+        if (hDp <= 0) hDp = extras ? 170 : 140;
+        float dens = c.getResources().getDisplayMetrics().density;
+        double maxPx = 2.5e6 / 4;   // Bitmap höchstens ~2,5 MB (Grenze für RemoteViews)
+        if (wDp * hDp * dens * dens > maxPx) dens = (float) Math.sqrt(maxPx / (wDp * hDp));
+        String theme = p.getString("theme", "system");
+        boolean dark = theme.equals("dark") || (theme.equals("system")
+            && (c.getResources().getConfiguration().uiMode & android.content.res.Configuration.UI_MODE_NIGHT_MASK) == android.content.res.Configuration.UI_MODE_NIGHT_YES);
+        String place = p.contains("lat") ? p.getString("name", "") : "Ort in der App wählen";
+        String stand = d.has("t") ? d.optString("chartModel", "ICON-D2") + " · " + BrightSky.hhmm(d.optLong("t")) : "";
+        RemoteViews v = new RemoteViews(c.getPackageName(), R.layout.widget_chart);
+        v.setImageViewBitmap(R.id.chart, ChartImage.draw(d.optJSONArray("chart"), place, stand,
+            Math.round(wDp * dens), Math.round(hDp * dens), dens, extras, dark));
+        v.setInt(R.id.root, "setBackgroundResource", dark ? R.drawable.widget_bg_dark : R.drawable.widget_bg_light);
+        Intent open = new Intent(c, MainActivity.class).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK | Intent.FLAG_ACTIVITY_SINGLE_TOP);
+        v.setOnClickPendingIntent(R.id.root, PendingIntent.getActivity(c, 1, open, PendingIntent.FLAG_IMMUTABLE | PendingIntent.FLAG_UPDATE_CURRENT));
+        return v;
     }
 
     private static RemoteViews build(Context c, int layout) {
