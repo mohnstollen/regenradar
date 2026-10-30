@@ -1,6 +1,8 @@
-# Wetter-App (PWA) – Version 3.16.0
+# Wetter-App (PWA) – Version 3.16.1
 
 ## Neu in 3.16
+- 3.16.1: Im Kombi-Widget wird die Wetterbeschreibung unter der Temperatur bei großer Systemschrift nicht mehr
+  abgeschnitten. Kopf und Warnzeile wachsen mit, das Diagramm wird entsprechend niedriger.
 - Android-App: Beim Platzieren eines Widgets fragt die App, für welchen Ort es gelten soll – „Mein Standort“
   (zuletzt per GPS ermittelt), der Ort aus der App oder einer der Favoriten. Bei Diagramm-Widgets folgt danach der Zeitraum.
 - Alle Widgets lassen sich über „Widget bearbeiten“ (lange antippen) nachträglich auf einen anderen Ort umstellen.

@@ -422,7 +422,11 @@ final class Widgets {
         v.setTextViewText(R.id.updated, d.has("t") ? "Stand " + BrightSky.hhmm(d.optLong("t")) : "");
         setWarn(v, w);
         int[] sz = sizeDp(mgr, id, 300, 230);
-        int chartH = sz[1] - 8 - 46 - (w != null ? 27 : 0) - 2 - 6;   // Polster oben, Kopf, Warnung, Abstand, Polster unten
+        // Kopf und Warnung wachsen mit der Systemschrift (Zeilenhöhe ≈ 1,2 × Schriftgröße); das Diagramm bekommt den Rest
+        float fs = c.getResources().getConfiguration().fontScale;
+        int headH = (int) Math.ceil(Math.max(46, Math.max((26 + 12) * fs * 1.2f + 2, (13 + 12 + 10) * fs * 1.2f + 5)));
+        int warnH = (int) Math.ceil(Math.max(22, 12 * fs * 1.2f + 6)) + 5;
+        int chartH = sz[1] - 8 - headH - (w != null ? warnH : 0) - 2 - 6;   // Polster oben, Kopf, Warnung, Abstand, Polster unten
         v.setImageViewBitmap(R.id.chart, chartBitmap(c, d, hours(c, id), null, sz[0], Math.max(90, chartH),
             ChartImage.ROW_SUN | ChartImage.ROW_RAIN | ChartImage.ROW_WIND, dark));
         if (theme(p) != null) {   // fest gewähltes Hell/Dunkel; sonst gelten die Ressourcenfarben
