@@ -73,23 +73,82 @@ final class Widgets {
         return ids(c, WidgetChart.class).length + ids(c, WidgetChartPlus.class).length + ids(c, WidgetCombo.class).length;
     }
 
+    private static final Class<?>[] ALL = { WidgetSmall.class, WidgetWide.class, WidgetLarge.class, WidgetChart.class, WidgetChartPlus.class, WidgetCombo.class };
+
+    /** Ort eines Widgets: „gps“ (zuletzt per GPS), „app“ (in der App angezeigt, Standard für ältere Widgets) oder „fav:<id>“. */
+    static final class Place {
+        String key, name;
+        double lat, lon;
+    }
+
+    /** Ort eines Widgets auflösen; fehlt GPS oder der Favorit, gilt der Ort aus der App. null = noch gar kein Ort. */
+    static Place placeOf(Context c, int id) {
+        SharedPreferences p = Notifier.prefs(c);
+        String sel = p.getString("widgetLoc_" + id, "app");
+        JSONObject o = null;
+        try {
+            if (sel.equals("gps")) o = new JSONObject(p.getString("gpsLoc", "null"));
+            else if (sel.startsWith("fav:")) {
+                JSONArray favs = new JSONArray(p.getString("favs", "[]"));
+                for (int i = 0; i < favs.length(); i++)
+                    if (sel.substring(4).equals(favs.getJSONObject(i).optString("id"))) o = favs.getJSONObject(i);
+            }
+        } catch (JSONException ignored) { }
+        Place pl = new Place();
+        if (o != null && o.has("lat")) {
+            pl.lat = o.optDouble("lat"); pl.lon = o.optDouble("lon"); pl.name = o.optString("name", "");
+        } else if (p.contains("lat")) {
+            pl.lat = Double.longBitsToDouble(p.getLong("lat", 0)); pl.lon = Double.longBitsToDouble(p.getLong("lon", 0)); pl.name = p.getString("name", "");
+        } else return null;
+        pl.key = String.format(Locale.ROOT, "%.3f,%.3f", pl.lat, pl.lon);
+        return pl;
+    }
+
     /** Zeitraum eines Diagramm-Widgets in Stunden (12, 24 oder 48; Auswahl in WidgetConfig). */
     static int hours(Context c, int id) {
         return Notifier.prefs(c).getInt("chartHours_" + id, 12);
     }
 
-    /** Längster Zeitraum aller Diagramm-Widgets – so weit reichen die Daten. */
-    private static int maxHours(Context c) {
-        int max = 0;
-        for (Class<?> k : new Class<?>[] { WidgetChart.class, WidgetChartPlus.class, WidgetCombo.class })
-            for (int id : ids(c, k)) max = Math.max(max, hours(c, id));
-        return max;
+    /** Was die Widgets an einem Ort brauchen. */
+    private static final class Needs {
+        boolean days, warn, rain; int hours;   // 5 Tage (groß), Warnung (groß/Kombi), Regen in 2 h (breit/groß), längster Diagrammzeitraum
+    }
+
+    /**
+     * Alle Widgets aktualisieren: Daten je verwendetem Ort einmal holen. Für den Ort der App gibt CheckService den
+     * Radar-Nowcast mit (appLat/appLon, nc); andere Orte holen ihn bei Bedarf selbst.
+     */
+    static void refreshAll(Context c, double appLat, double appLon, BrightSky.Nowcast appNc) {
+        Map<String, Place> places = new HashMap<>();
+        Map<String, Needs> needs = new HashMap<>();
+        for (Class<?> k : ALL)
+            for (int id : ids(c, k)) {
+                Place pl = placeOf(c, id);
+                if (pl == null) continue;
+                places.put(pl.key, pl);
+                Needs n = needs.get(pl.key);
+                if (n == null) { n = new Needs(); needs.put(pl.key, n); }
+                n.days |= k == WidgetLarge.class;
+                n.warn |= k == WidgetLarge.class || k == WidgetCombo.class;
+                n.rain |= k == WidgetWide.class || k == WidgetLarge.class;
+                if (k == WidgetChart.class || k == WidgetChartPlus.class || k == WidgetCombo.class) n.hours = Math.max(n.hours, hours(c, id));
+            }
+        String appKey = String.format(Locale.ROOT, "%.3f,%.3f", appLat, appLon);
+        for (Place pl : places.values()) {
+            Needs n = needs.get(pl.key);
+            BrightSky.Nowcast nc = null;
+            if (pl.key.equals(appKey)) nc = appNc;
+            else if (n.rain) { try { nc = BrightSky.nowcast(BrightSky.radar(pl.lat, pl.lon, 3)); } catch (Exception ignored) { } }
+            refresh(c, pl, n, nc);
+        }
+        render(c);
     }
 
     // ---------- Daten ----------
 
-    /** Holt aktuelle Werte und Stundenvorhersage, speichert sie und zeichnet alle Widgets neu. */
-    static void refresh(Context c, double lat, double lon, BrightSky.Nowcast nc) {
+    /** Holt aktuelle Werte und Vorhersage für einen Ort und speichert sie (je Ort ein Zwischenspeicher). */
+    private static void refresh(Context c, Place pl, Needs n, BrightSky.Nowcast nc) {
+        double lat = pl.lat, lon = pl.lon;
         JSONObject d = new JSONObject();
         long now = System.currentTimeMillis();
         try {
@@ -111,10 +170,10 @@ final class Widgets {
             long dayStart = cal.getTimeInMillis();
             cal.add(Calendar.DAY_OF_MONTH, 1);
             long dayEnd = cal.getTimeInMillis();
-            boolean large = ids(c, WidgetLarge.class).length > 0;
+            boolean large = n.days;
             cal.add(Calendar.DAY_OF_MONTH, DAYS + 1);
             long to = large ? cal.getTimeInMillis() : Math.max(dayEnd, now + (SLOTS * STEP_H + 2) * 3600000L);
-            to = Math.max(to, now + (maxHours(c) + 2) * 3600000L);   // Regenwahrscheinlichkeit für die Diagramme
+            to = Math.max(to, now + (n.hours + 2) * 3600000L);   // Regenwahrscheinlichkeit für die Diagramme
             JSONArray rows = BrightSky.hourly(lat, lon, dayStart, to);
             probAt.clear();
             Map<Long, List<JSONObject>> byDay = new TreeMap<>();
@@ -153,17 +212,16 @@ final class Widgets {
             }
             d.put("days", days);
         } catch (Exception ignored) { }
-        if (ids(c, WidgetLarge.class).length + ids(c, WidgetCombo.class).length > 0) {
+        if (n.warn) {
             try { d.put("warn", topWarning(BrightSky.alerts(lat, lon))); } catch (Exception ignored) { }
         }
-        if (charts(c) > 0) {
-            int mh = maxHours(c);
+        if (n.hours > 0) {
+            int mh = n.hours;
             try { chartData(d, "chart", "chartModel", lat, lon, probAt, now, Math.min(mh, 24), false); } catch (Exception ignored) { }
             if (mh > 24) try { chartData(d, "chart48", "chart48Model", lat, lon, probAt, now, 48, true); } catch (Exception ignored) { }
         }
         try { d.put("rain", rainText(nc)).put("rainNow", nc != null && (nc.raining || nc.eta >= 0)); } catch (JSONException ignored) { }
-        Notifier.prefs(c).edit().putString(CACHE, d.toString()).apply();
-        render(c);
+        Notifier.prefs(c).edit().putString(CACHE + "_" + pl.key, d.toString()).apply();
     }
 
     private static long startOfDay(long ms) {
@@ -292,11 +350,9 @@ final class Widgets {
 
     static void render(Context c) {
         AppWidgetManager mgr = AppWidgetManager.getInstance(c);
-        int[] small = ids(c, WidgetSmall.class), wide = ids(c, WidgetWide.class);
-        int[] large = ids(c, WidgetLarge.class);
-        if (small.length > 0) mgr.updateAppWidget(small, build(c, R.layout.widget_small));
-        if (wide.length > 0) mgr.updateAppWidget(wide, build(c, R.layout.widget_wide));
-        if (large.length > 0) mgr.updateAppWidget(large, build(c, R.layout.widget_large));
+        for (int id : ids(c, WidgetSmall.class)) mgr.updateAppWidget(id, build(c, R.layout.widget_small, id));
+        for (int id : ids(c, WidgetWide.class)) mgr.updateAppWidget(id, build(c, R.layout.widget_wide, id));
+        for (int id : ids(c, WidgetLarge.class)) mgr.updateAppWidget(id, build(c, R.layout.widget_large, id));
         for (int id : ids(c, WidgetChart.class)) mgr.updateAppWidget(id, buildChart(c, mgr, id, 0));
         for (int id : ids(c, WidgetChartPlus.class)) mgr.updateAppWidget(id, buildChart(c, mgr, id, ChartImage.ROW_SUN | ChartImage.ROW_RAIN));
         for (int id : ids(c, WidgetCombo.class)) mgr.updateAppWidget(id, buildCombo(c, mgr, id));
@@ -326,9 +382,13 @@ final class Widgets {
         return ChartImage.draw(data, place, stand, Math.round(wDp * dens), Math.round(hDp * dens), dens, hours, rows, dark);
     }
 
-    private static JSONObject cache(SharedPreferences p) {
-        try { return new JSONObject(p.getString(CACHE, "{}")); } catch (JSONException e) { return new JSONObject(); }
+    /** Zwischengespeicherte Daten für den Ort eines Widgets (leer, solange noch nichts geladen ist). */
+    private static JSONObject cache(SharedPreferences p, Place pl) {
+        if (pl == null) return new JSONObject();
+        try { return new JSONObject(p.getString(CACHE + "_" + pl.key, "{}")); } catch (JSONException e) { return new JSONObject(); }
     }
+
+    private static String placeName(Place pl) { return pl == null ? "Ort in der App wählen" : pl.name; }
 
     private static void openAppOnClick(Context c, RemoteViews v) {
         Intent open = new Intent(c, MainActivity.class).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK | Intent.FLAG_ACTIVITY_SINGLE_TOP);
@@ -350,10 +410,11 @@ final class Widgets {
      */
     private static RemoteViews buildCombo(Context c, AppWidgetManager mgr, int id) {
         SharedPreferences p = Notifier.prefs(c);
-        JSONObject d = cache(p), w = d.optJSONObject("warn");
-        boolean dark = isDark(c, p), hasLoc = p.contains("lat");
+        Place pl = placeOf(c, id);
+        JSONObject d = cache(p, pl), w = d.optJSONObject("warn");
+        boolean dark = isDark(c, p), hasLoc = pl != null;
         RemoteViews v = new RemoteViews(c.getPackageName(), R.layout.widget_combo);
-        v.setTextViewText(R.id.place, hasLoc ? p.getString("name", "") : "Ort in der App wählen");
+        v.setTextViewText(R.id.place, placeName(pl));
         v.setTextViewText(R.id.temp, deg(d.optDouble("temp", Double.NaN)));
         v.setImageViewResource(R.id.icon, iconRes(c, d.optString("icon", "unknown")));
         v.setTextViewText(R.id.desc, d.optString("desc", hasLoc ? "Daten werden geladen …" : ""));
@@ -384,28 +445,25 @@ final class Widgets {
         SharedPreferences p = Notifier.prefs(c);
         boolean dark = isDark(c, p);
         int[] sz = sizeDp(mgr, id, 300, rows != 0 ? 170 : 140);
-        String place = p.contains("lat") ? p.getString("name", "") : "Ort in der App wählen";
+        Place pl = placeOf(c, id);
         RemoteViews v = new RemoteViews(c.getPackageName(), R.layout.widget_chart);
-        v.setImageViewBitmap(R.id.chart, chartBitmap(c, cache(p), hours(c, id), place, sz[0], sz[1], rows, dark));
+        v.setImageViewBitmap(R.id.chart, chartBitmap(c, cache(p, pl), hours(c, id), placeName(pl), sz[0], sz[1], rows, dark));
         v.setInt(R.id.root, "setBackgroundResource", dark ? R.drawable.widget_bg_dark : R.drawable.widget_bg_light);
         openAppOnClick(c, v);
         return v;
     }
 
-    private static RemoteViews build(Context c, int layout) {
+    private static RemoteViews build(Context c, int layout, int id) {
         SharedPreferences p = Notifier.prefs(c);
         RemoteViews v = new RemoteViews(c.getPackageName(), layout);
         boolean large = layout == R.layout.widget_large, wide = large || layout == R.layout.widget_wide;
-        JSONObject d;
-        try { d = new JSONObject(p.getString(CACHE, "{}")); } catch (JSONException e) { d = new JSONObject(); }
-
-        String place = p.getString("name", "");
-        if (!p.contains("lat")) place = "Ort in der App wählen";
-        v.setTextViewText(R.id.place, place);
+        Place pl = placeOf(c, id);
+        JSONObject d = cache(p, pl);
+        v.setTextViewText(R.id.place, placeName(pl));
         v.setTextViewText(R.id.temp, deg(d.optDouble("temp", Double.NaN)));
         v.setImageViewResource(R.id.icon, iconRes(c, d.optString("icon", "unknown")));
         if (wide) {
-            v.setTextViewText(R.id.desc, d.optString("desc", p.contains("lat") ? "Daten werden geladen …" : ""));
+            v.setTextViewText(R.id.desc, d.optString("desc", pl != null ? "Daten werden geladen …" : ""));
             v.setTextViewText(R.id.hilo, d.has("hi") ? "↑ " + deg(d.optDouble("hi")) + "  ↓ " + deg(d.optDouble("lo")) : "");
             v.setTextViewText(R.id.updated, d.has("t") ? "Stand " + BrightSky.hhmm(d.optLong("t")) : "");
             String rain = d.optString("rain", "");

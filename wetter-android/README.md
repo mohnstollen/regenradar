@@ -94,9 +94,12 @@ Kurve trägt dann wie das App-Diagramm je Tag Höchst- und Tiefstwert und markie
 Die Diagramme zeichnet `ChartImage` als Bild in der tatsächlichen Größe des Widgets und bei Größenänderung neu. Die
 Vorschaubilder für die Widget-Auswahl (`res/drawable-nodpi/widget_chart*_preview.png`) stammen aus demselben Zeichencode.
 
-Die Widgets zeigen den zuletzt in der App angezeigten Ort. Antippen öffnet die App. Die Daten holt
-`CheckService` von Bright Sky, solange ein Widget existiert, etwa alle 15 Minuten. Nach einem Ortswechsel
-in der App oder beim Hinzufügen eines Widgets geschieht das sofort. Die Widgets übernehmen Hell/Dunkel aus
+Beim Hinzufügen fragt `WidgetConfig` nach dem Ort des Widgets: „Mein Standort“ (der zuletzt per GPS ermittelte Ort,
+wie bei der Tagesvorhersage), „Ort aus der App“ (der zuletzt in der App angezeigte Ort) oder ein Favorit. Die Wahl
+steht in `widgetLoc_<id>` (`gps`, `app`, `fav:<id>`); Widgets ohne Eintrag zeigen den Ort aus der App. Favoriten und
+GPS-Ort übergibt die App bei jedem `sync`. Über „Widget bearbeiten“ lässt sich das bei allen Widgets ändern. Antippen
+öffnet die App. Die Daten holt `CheckService` von Bright Sky je verwendetem Ort einmal, solange ein Widget existiert,
+etwa alle 15 Minuten. Nach einem Ortswechsel in der App oder beim Hinzufügen eines Widgets geschieht das sofort. Die Widgets übernehmen Hell/Dunkel aus
 der App. Bei „Wie System“ folgen sie dem Systemmodus.
 
 Die Wettersymbole der Widgets (`res/drawable-nodpi/wx_*.png`) entstehen aus `../wetter/icons.js`.

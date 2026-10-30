@@ -1,4 +1,10 @@
-# Wetter-App (PWA) – Version 3.15.0
+# Wetter-App (PWA) – Version 3.16.0
+
+## Neu in 3.16
+- Android-App: Beim Platzieren eines Widgets fragt die App, für welchen Ort es gelten soll – „Mein Standort“
+  (zuletzt per GPS ermittelt), der Ort aus der App oder einer der Favoriten. Bei Diagramm-Widgets folgt danach der Zeitraum.
+- Alle Widgets lassen sich über „Widget bearbeiten“ (lange antippen) nachträglich auf einen anderen Ort umstellen.
+  Bisherige Widgets zeigen weiterhin den Ort aus der App.
 
 ## Neu in 3.15
 - Android-App: Einstellungen → App (weiter oben) mit installierter Version und Knopf „Nach Updates suchen“. Gibt es

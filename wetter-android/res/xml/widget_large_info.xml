@@ -5,5 +5,6 @@
     android:minResizeWidth="250dp" android:minResizeHeight="180dp"
     android:resizeMode="horizontal|vertical" android:widgetCategory="home_screen"
     android:updatePeriodMillis="1800000"
+    android:configure="de.regenradar.wetter.WidgetConfig" android:widgetFeatures="reconfigurable"
     android:initialLayout="@layout/widget_large" android:previewLayout="@layout/widget_large"
     android:previewImage="@mipmap/ic_launcher" android:description="@string/widget_large_desc" />

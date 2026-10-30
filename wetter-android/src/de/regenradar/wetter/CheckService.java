@@ -86,7 +86,7 @@ public class CheckService extends JobService {
         if (allowed && p.getBoolean("stormNotify", false)) {
             try { StormAlert.check(c, lat, lon, p.getInt("stormRadius", 50)); } catch (Exception ignored) { }
         }
-        if (widgets) Widgets.refresh(c, lat, lon, radar != null ? BrightSky.nowcast(radar) : null);
+        if (widgets) Widgets.refreshAll(c, lat, lon, radar != null ? BrightSky.nowcast(radar) : null);
         if (approaching) runIn(c, 5 * 60 * 1000L);
     }
 
