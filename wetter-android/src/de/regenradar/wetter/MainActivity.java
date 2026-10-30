@@ -157,11 +157,17 @@ public class MainActivity extends Activity {
                 JSONObject o = a.getJSONObject(1);
                 SharedPreferences p = Notifier.prefs(this);
                 long oldLat = p.getLong("lat", 0), oldLon = p.getLong("lon", 0);
+                // Favoriten und zuletzt per GPS ermittelter Ort – Widgets können darauf eingestellt sein
+                String favs = o.has("favs") ? o.optJSONArray("favs").toString() : "[]";
+                String gps = o.isNull("gpsLoc") ? "null" : o.optJSONObject("gpsLoc").toString();
+                boolean placesChanged = !favs.equals(p.getString("favs", "[]")) || !gps.equals(p.getString("gpsLoc", "null"));
                 SharedPreferences.Editor e = p.edit()
                     .putBoolean("notify", o.optBoolean("notify"))
                     .putBoolean("warnNotify", o.optBoolean("warnNotify"))
                     .putString("name", o.optString("name", ""))
                     .putString("theme", o.optString("theme", "system"))
+                    .putString("favs", favs)
+                    .putString("gpsLoc", gps)
                     .putInt("rainRadius", o.optInt("rainRadius", 10))
                     .putString("rainMin", o.optString("rainMin", "all"))
                     .putBoolean("stormNotify", o.optBoolean("stormNotify"))
@@ -186,7 +192,7 @@ public class MainActivity extends Activity {
                 DailyAlarm.schedule(this);
                 if (Widgets.any(this)) {
                     Widgets.render(this);                  // Ortsname, Hell/Dunkel sofort
-                    if (moved) CheckService.runSoon(this); // neuer Ort: frische Daten holen
+                    if (moved || placesChanged) CheckService.runSoon(this);   // neuer Ort: frische Daten holen
                 }
                 return "null";
             }

@@ -11,7 +11,7 @@
  * Pollen:      DWD Pollenflug-Gefahrenindex, außerhalb DE Open-Meteo/CAMS
  */
 'use strict';
-const APP_VERSION = '3.15.0';
+const APP_VERSION = '3.16.0';
 const WIZARD_VERSION = '3.11';
 
 // ---------- Endpunkte ----------
@@ -112,7 +112,9 @@ const native = (cmd, ...args) => { try { return JSON.parse(prompt('wetterapp:' +
 function syncNative() {
   if (NATIVE) native('sync', { lat: S.loc?.lat ?? null, lon: S.loc?.lon ?? null, name: S.loc?.name ?? '', notify: S.notify, warnNotify: S.warnNotify, theme: S.theme,
     rainRadius: S.rainRadius, rainMin: S.rainMin, stormNotify: S.stormNotify, stormRadius: S.stormRadius,
-    dailyEve: S.dailyEve, dailyEveTime: S.dailyEveTime, dailyMorn: S.dailyMorn, dailyMornTime: S.dailyMornTime, dailyPlace: dailyPlace() });
+    dailyEve: S.dailyEve, dailyEveTime: S.dailyEveTime, dailyMorn: S.dailyMorn, dailyMornTime: S.dailyMornTime, dailyPlace: dailyPlace(),
+    // Widgets können einzeln auf „Mein Standort“ oder einen Favoriten eingestellt werden
+    favs: S.favs.map(f => ({ id: String(f.id), name: f.name, lat: f.lat, lon: f.lon })), gpsLoc: S.gpsLoc });
 }
 // Ort der Tagesvorhersage: zuletzt per GPS ermittelter Standort (sonst der angezeigte Ort) oder ein Favorit
 function dailyPlace() {

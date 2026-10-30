@@ -21,7 +21,7 @@ public class WidgetChart extends AppWidgetProvider {
 
     @Override
     public void onDeleted(Context c, int[] ids) {
-        for (int id : ids) Notifier.prefs(c).edit().remove("chartHours_" + id).apply();
+        for (int id : ids) Notifier.prefs(c).edit().remove("chartHours_" + id).remove("widgetLoc_" + id).apply();
     }
 
     @Override

@@ -14,6 +14,11 @@ public class WidgetSmall extends AppWidgetProvider {
     }
 
     @Override
+    public void onDeleted(Context c, int[] ids) {
+        for (int id : ids) Notifier.prefs(c).edit().remove("widgetLoc_" + id).apply();
+    }
+
+    @Override
     public void onDisabled(Context c) {
         CheckService.update(c);      // letztes Widget entfernt – Prüfung ggf. beenden
     }
