@@ -11,7 +11,7 @@
  * Pollen:      DWD Pollenflug-Gefahrenindex, außerhalb DE Open-Meteo/CAMS
  */
 'use strict';
-const APP_VERSION = '3.16.1';
+const APP_VERSION = '3.17.0';
 const WIZARD_VERSION = '3.11';
 
 // ---------- Endpunkte ----------
@@ -815,17 +815,47 @@ async function loadDays(lat, lon) {
   if (!days.length) throw new Error('keine Tageswerte');
   const gmin = Math.min(...days.map(d => d.tmin)), gmax = Math.max(...days.map(d => d.tmax)), span = Math.max(1, gmax - gmin);
   const box = $('#daysList'); box.className = 'days';
+  daysRows = rows;
   box.innerHTML = days.map(x => {
     const dt = new Date(x.d), name = x.d === today ? 'Heute' : x.d === addDays(today, 1) ? 'Morgen' : WD[dt.getDay()];
     const rain = x.mm >= 0.1 ? `<b>${fmt(x.mm, x.mm >= 10 ? 0 : 1)} mm</b>` : 'trocken';
     const extra = [x.prob != null && x.prob >= 10 ? `${fmt(x.prob, 0)} %` : '', x.sun != null ? `${fmt(x.sun / 60, 1)} h Sonne` : '', x.gust >= 50 ? `Böen ${fmt(x.gust, 0)}` : ''].filter(Boolean).join(' · ');
     const l = (x.tmin - gmin) / span * 100, w = Math.max(4, (x.tmax - x.tmin) / span * 100);
-    return `<div class="day"><div class="dname">${name}<small>${dt.getDate()}.${dt.getMonth() + 1}.</small></div>`
+    return `<div class="day" role="button" tabindex="0" aria-expanded="false" data-d="${x.d}" title="Stundenwerte anzeigen"><div class="dname">${name}<small>${dt.getDate()}.${dt.getMonth() + 1}.</small></div>`
       + `<div class="dico" title="${esc(ICON_TXT[x.icon] || '')}">${window.ICONS.weather(x.icon)}</div>`
       + `<div class="drain">${rain}${extra ? `<br>${extra}` : ''}</div>`
-      + `<div class="dtemp"><span class="mn">${fmt(x.tmin, 0)}°</span><div class="tbar"><i style="left:${l.toFixed(1)}%;width:${w.toFixed(1)}%"></i></div><span class="mx">${fmt(x.tmax, 0)}°</span></div></div>`;
+      + `<div class="dtemp"><span class="mn">${fmt(x.tmin, 0)}°</span><div class="tbar"><i style="left:${l.toFixed(1)}%;width:${w.toFixed(1)}%"></i></div><span class="mx">${fmt(x.tmax, 0)}°</span></div></div>`
+      + `<div class="dhours" hidden></div>`;
   }).join('');
-  $('#daysInfo').textContent = `DWD MOSMIX · Datenstand ${whenTxt(at)} · Prozent = höchste stündliche Regenwahrscheinlichkeit`;
+  if (openDay != null) toggleDay(box.querySelector(`.day[data-d="${openDay}"]`), true);
+  $('#daysInfo').textContent = `DWD MOSMIX · Datenstand ${whenTxt(at)} · Tag antippen für Stundenwerte · Prozent = höchste stündliche Regenwahrscheinlichkeit`;
+}
+// Stundenwerte eines Tages (00–23 Uhr) unter der Tageszeile auf- und zuklappen; immer nur ein Tag offen
+let daysRows = [], openDay = null;
+function toggleDay(el, open = el && el.getAttribute('aria-expanded') !== 'true') {
+  if (!el) { openDay = null; return; }
+  document.querySelectorAll('#daysList .day[aria-expanded="true"]').forEach(o => { o.setAttribute('aria-expanded', 'false'); o.nextElementSibling.hidden = true; });
+  openDay = open ? Number(el.dataset.d) : null;
+  if (!open) return;
+  const d = openDay, box = el.nextElementSibling, now = Date.now();
+  const hrs = daysRows.filter(r => dayStart(r.t) === d);
+  box.innerHTML = `<div class="hstrip">${hrs.map(r => {
+    const dt = new Date(r.t), past = r.t + HOUR <= now;
+    const rain = r.mm >= 0.1 ? fmt(r.mm, r.mm >= 10 ? 0 : 1) : '';
+    const prob = r.prob != null && r.prob >= 10 ? `${fmt(r.prob, 0)} %` : '';
+    return `<div class="hcell${past ? ' past' : ''}"><span class="hh">${String(dt.getHours()).padStart(2, '0')}</span>`
+      + `<span class="hico" title="${esc(ICON_TXT[r.icon] || '')}">${window.ICONS.weather(r.icon || 'unknown')}</span>`
+      + `<b class="ht">${fmt(r.temp, 0)}°</b><span class="hmm">${rain}</span><span class="hp">${prob}</span></div>`;
+  }).join('')}</div>`
+    + `<div class="hlegend small muted">Niederschlag in mm je Stunde · Regenwahrscheinlichkeit</div>`;
+  box.hidden = false; el.setAttribute('aria-expanded', 'true');
+  const cur = box.querySelector('.hcell:not(.past)'), strip = box.firstChild;   // heute: bei der aktuellen Stunde beginnen
+  if (cur && cur.previousElementSibling) strip.scrollLeft = cur.offsetLeft - strip.offsetLeft;
+}
+function initDays() {
+  const box = $('#daysList');
+  box.onclick = (e) => { const el = e.target.closest('.day'); if (el) toggleDay(el); };
+  box.onkeydown = (e) => { const el = e.target.closest('.day'); if (el && (e.key === 'Enter' || e.key === ' ')) { e.preventDefault(); toggleDay(el); } };
 }
 
 // ---------- Textprognose + Winterhinweise (ICON-D2) ----------
@@ -1313,6 +1343,25 @@ function setMapMode(mode, persist = true) {
   }
   updateMapTime();
 }
+// Karte im Vollbild: Karte füllt den Bildschirm, Knopf oben rechts, Zurück-Taste oder Esc kehren zurück
+const mapCard = () => document.querySelector('section[data-sec="map"]');
+function setMapFull(on) {
+  const card = mapCard();
+  if (card.classList.contains('full') === on) return;
+  card.classList.toggle('full', on); document.body.classList.toggle('map-open', on);
+  const b = $('#btnMapFull'); b.innerHTML = I(on ? 'collapse' : 'expand');
+  b.title = b.ariaLabel = on ? 'Vollbild beenden' : 'Karte im Vollbild';
+  if (on) history.pushState({ mapFull: 1 }, '');
+  else if (history.state && history.state.mapFull) history.back();
+  setTimeout(() => map && map.invalidateSize(), 60);
+}
+window.appBack = () => { if (!mapCard().classList.contains('full')) return false; setMapFull(false); return true; };   // Android-Zurück-Taste
+function initMapFull() {
+  $('#btnMapFull').innerHTML = I('expand');
+  $('#btnMapFull').onclick = () => setMapFull(!mapCard().classList.contains('full'));
+  window.addEventListener('popstate', () => { if (!(history.state && history.state.mapFull)) setMapFull(false); });
+  document.addEventListener('keydown', (e) => { if (e.key === 'Escape' && !document.querySelector('dialog[open]') && window.appBack()) e.preventDefault(); });
+}
 function updateMapTime() {
   const m = S.mapMode, parts = [];
   if (m === 'wind') parts.push('Windy.com · ECMWF-Modell');
@@ -1711,6 +1760,7 @@ function init() {
   $('#searchForm').onsubmit = (e) => { e.preventDefault(); doSearch(); };
   $('#tabRadar').onclick = () => setMapMode('radar'); $('#tabSat').onclick = () => setMapMode('sat');
   $('#tabBoth').onclick = () => setMapMode('both'); $('#tabWind').onclick = () => setMapMode('wind');
+  initMapFull(); initDays();
   $('#btnPlay').onclick = playAnim;
   $('#btnAnimNow').onclick = () => { stopAnim(); showFrame(anim.nowIdx); };
   $('#animSlider').oninput = (e) => { stopAnim(); showFrame(Number(e.target.value)); };

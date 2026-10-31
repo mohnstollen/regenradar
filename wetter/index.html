@@ -101,8 +101,11 @@
           <button id="tabWind" role="tab">Wind</button>
         </div>
       </div>
-      <div id="map"></div>
-      <div id="windy" class="windy" hidden></div>
+      <div class="mapwrap">
+        <div id="map"></div>
+        <div id="windy" class="windy" hidden></div>
+        <button type="button" id="btnMapFull" class="mapfull" title="Karte im Vollbild" aria-label="Karte im Vollbild"></button>
+      </div>
       <div class="anim" id="animBar">
         <button type="button" id="btnPlay" title="Animation abspielen" aria-label="Animation abspielen"></button>
         <input type="range" id="animSlider" min="0" max="0" value="0" aria-label="Radarzeitpunkt">

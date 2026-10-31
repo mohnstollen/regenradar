@@ -1,4 +1,10 @@
-# Wetter-App (PWA) – Version 3.16.1
+# Wetter-App (PWA) – Version 3.17.0
+
+## Neu in 3.17
+- 10-Tage-Übersicht: Tippt man auf einen Tag, klappen darunter die Stundenwerte auf (00–23 Uhr) mit Symbol,
+  Temperatur, Niederschlag und Regenwahrscheinlichkeit. Heute beginnt die Leiste bei der aktuellen Stunde.
+- Karte im Vollbild: Knopf oben rechts in der Karte. Radar, Satellit, Beides und Wind füllen dann den Bildschirm.
+  Zurück über denselben Knopf, die Zurück-Taste (Android) oder Esc.
 
 ## Neu in 3.16
 - 3.16.1: Im Kombi-Widget wird die Wetterbeschreibung unter der Temperatur bei großer Systemschrift nicht mehr

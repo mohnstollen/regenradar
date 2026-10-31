@@ -39,9 +39,10 @@ public class MainActivity extends Activity {
     private static final String START = "https://" + HOST + "/index.html";
     private static final int REQ_LOCATION = 1, REQ_NOTIFY = 2;
     private static final String BRIDGE = "wetterapp:";
-    // Schließt den obersten offenen <dialog> wie die Escape-Taste; liefert true, wenn einer offen war
+    // Zurück-Taste: erst offenen Dialog schließen, dann Vollbild-Karte beenden (window.appBack), sonst zurück bzw. beenden
     private static final String JS_BACK = "(()=>{const d=[...document.querySelectorAll('dialog[open]')].pop();"
-        + "if(!d)return false;if(d.dispatchEvent(new Event('cancel',{cancelable:true})))d.close();return true})()";
+        + "if(!d)return !!(window.appBack&&window.appBack());"
+        + "if(d.dispatchEvent(new Event('cancel',{cancelable:true})))d.close();return true})()";
 
     private WebView web;
     private GeolocationPermissions.Callback geoCallback;

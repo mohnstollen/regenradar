@@ -122,6 +122,20 @@ a { color: var(--primary); }
 .day { display: grid; grid-template-columns: 4.6rem 34px 1fr 5.6rem; gap: .5rem; align-items: center; padding: .4rem 0; border-bottom: 1px solid var(--line); color: var(--text); }
 .day:last-child { border-bottom: 0; }
 .day .dname { font-weight: 600; font-size: .9rem; }
+.day { cursor: pointer; -webkit-tap-highlight-color: transparent; }
+.day[aria-expanded="true"] { border-bottom-color: transparent; }
+.day[aria-expanded="true"] .dname { color: var(--primary); }
+.dhours { border-bottom: 1px solid var(--line); padding: 0 0 .5rem; }
+.hstrip { display: flex; overflow-x: auto; gap: .2rem; padding: .45rem .3rem; background: var(--bg); border-radius: 10px; scrollbar-width: thin; }
+.hcell { flex: 0 0 2.9rem; display: flex; flex-direction: column; align-items: center; gap: .1rem; font-variant-numeric: tabular-nums; font-size: .8rem; color: var(--text); }
+.hcell.past { opacity: .45; }
+.hcell .hh { color: var(--muted); font-size: .75rem; }
+.hcell .hico { width: 30px; height: 30px; }
+.hcell .hico svg { width: 100%; height: 100%; }
+.hcell .ht { font-size: .9rem; }
+.hcell .hmm { color: var(--rain); font-weight: 600; min-height: 1.1em; }
+.hcell .hp { color: var(--muted); font-size: .7rem; min-height: 1em; }
+.hlegend { margin-top: .3rem; }
 .day .dname small { display: block; font-weight: 400; color: var(--muted); font-size: .72rem; }
 .day .dico { width: 34px; height: 34px; }
 .day .dico svg { width: 100%; height: 100%; }
@@ -163,6 +177,19 @@ a { color: var(--primary); }
 #animTime.fc { color: #c35a00; font-weight: 600; }
 .map-foot { display: flex; justify-content: space-between; flex-wrap: wrap; gap: .4rem; margin-top: .45rem; color: var(--muted); }
 .legend i { display: inline-block; width: 11px; height: 11px; border-radius: 3px; margin: 0 3px 0 8px; vertical-align: -1px; }
+/* Karte im Vollbild */
+.mapwrap { position: relative; }
+.mapfull { position: absolute; top: 10px; right: 10px; z-index: 1000; width: 36px; height: 36px; display: grid; place-items: center; padding: 0; cursor: pointer;
+  background: #fff; color: #1c2733; border: 2px solid rgba(0,0,0,.2); border-radius: 6px; background-clip: padding-box; }
+.windy:not([hidden]) ~ .mapfull { top: auto; bottom: 10px; right: auto; left: 10px; }   /* Windy hat oben rechts eigene Knöpfe */
+body.map-open { overflow: hidden; }
+body.map-open .topbar { display: none; }   /* .content ist ein eigener Stapelkontext – die Leiste läge sonst über der Karte */
+.mapcard.full { position: fixed; inset: 0; z-index: 3000; margin: 0; border-radius: 0; display: flex; flex-direction: column; background: var(--card);
+  padding: max(.6rem, env(safe-area-inset-top)) max(.6rem, env(safe-area-inset-right)) max(.5rem, env(safe-area-inset-bottom)) max(.6rem, env(safe-area-inset-left)); }
+body.scene .mapcard.full { background: var(--card); -webkit-backdrop-filter: none; backdrop-filter: none; }
+.mapcard.full .mapwrap { flex: 1; min-height: 0; }
+.mapcard.full #map, .mapcard.full .windy { height: 100%; }
+.mapcard.full #map[hidden], .mapcard.full .windy[hidden] { display: none; }
 .nomap { display: grid; place-items: center; height: 100%; color: var(--muted); padding: 1rem; text-align: center; }
 
 /* Pollen */
