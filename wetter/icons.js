@@ -64,6 +64,8 @@
     check: ui('<circle cx="12" cy="12" r="9"/><path d="M8 12l3 3 5-6"/>'),
     station: ui('<path d="M12 21V10"/><path d="M8 21h8"/><circle cx="12" cy="7" r="2"/><path d="M7.8 3.8a6 6 0 0 0 0 6.4"/><path d="M16.2 3.8a6 6 0 0 1 0 6.4"/>'),
     chevron: ui('<path d="M6 9l6 6 6-6"/>'),
+    expand: ui('<path d="M4 9V4h5"/><path d="M20 9V4h-5"/><path d="M4 15v5h5"/><path d="M20 15v5h-5"/>'),
+    collapse: ui('<path d="M9 4v5H4"/><path d="M15 4v5h5"/><path d="M9 20v-5H4"/><path d="M15 20v-5h5"/>'),
     rainIco: ui('<path d="M7 14h10a4 4 0 0 0 .5-8A6 6 0 0 0 6 5.5 4.3 4.3 0 0 0 7 14z"/><path d="M9 17l-1 3"/><path d="M13 17l-1 3"/><path d="M17 17l-1 3"/>'),
     sunrise: ui(sunHalf + '<path d="M12 2.5v6"/><path d="M9.3 5.2L12 2.5l2.7 2.7"/>'),
     sunset: ui(sunHalf + '<path d="M12 2.5v6"/><path d="M9.3 5.8L12 8.5l2.7-2.7"/>'),
