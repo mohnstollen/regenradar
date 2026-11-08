@@ -47,6 +47,9 @@ a { color: var(--primary); }
 #setGlass { width: 100%; margin: .4rem 0 0; accent-color: var(--primary); }
 .range-ends { display: flex; justify-content: space-between; }
 .sunrow b, .now-details b { font-weight: 600; }
+.airrow { display: flex; flex-wrap: wrap; align-items: center; gap: .2rem .6rem; margin: -.2rem 0 .55rem; }
+.airrow b { font-weight: 600; }
+.aqdot { width: .8em; height: .8em; border-radius: 50%; display: inline-block; box-shadow: 0 0 0 1px rgba(0,0,0,.15); }
 .now-details { display: flex; flex-wrap: wrap; gap: .35rem 1.1rem; margin: .55rem 0 .55rem; }
 .station-btn { display: inline-flex; align-items: center; gap: .35rem; max-width: 100%; background: var(--bg); color: var(--muted); border: 1px solid var(--line2); border-radius: 999px; padding: .3rem .7rem; cursor: pointer; font: inherit; text-align: left; }
 .station-btn:hover { color: var(--text); border-color: var(--primary); }

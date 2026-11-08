@@ -11,7 +11,7 @@
  * Pollen:      DWD Pollenflug-Gefahrenindex, außerhalb DE Open-Meteo/CAMS
  */
 'use strict';
-const APP_VERSION = '3.17.0';
+const APP_VERSION = '3.18.0';
 const WIZARD_VERSION = '3.11';
 
 // ---------- Endpunkte ----------
@@ -34,7 +34,7 @@ const LS = 'wetterapp.settings.v3', LS_RAIN = 'wetterapp.rainNotified', LS_WARN 
 // ---------- Abschnitte der Startseite ----------
 const SECTIONS = [
   { id: 'warnings', name: 'Wetterwarnungen', sub: 'nur sichtbar, wenn der DWD warnt', icon: 'warn' },
-  { id: 'now', name: 'Aktuelle Werte', sub: 'Station, Sonnenauf-/-untergang', icon: 'thermo' },
+  { id: 'now', name: 'Aktuelle Werte', sub: 'Station, Sonne, Mond, Luftqualität', icon: 'thermo' },
   { id: 'nowcast', name: 'Regen in 2 Stunden', sub: '5-Minuten-Vorhersage aus dem DWD-Radar', icon: 'bars' },
   { id: 'daytext', name: 'Textprognose', sub: 'Tagesvorhersage in Worten, im Winter Glätte', icon: 'text' },
   { id: 'chart', name: 'Vorhersagediagramm', sub: '12 h bis 10 Tage, Modell wählbar', icon: 'chart' },
@@ -460,6 +460,26 @@ function renderScene() {
 // ---------- Aktuelles Wetter ----------
 const ICON_TXT = { 'clear-day': 'Sonnig', 'clear-night': 'Klar', 'partly-cloudy-day': 'Teilweise bewölkt', 'partly-cloudy-night': 'Teilweise bewölkt', cloudy: 'Bewölkt', fog: 'Nebel', wind: 'Windig', rain: 'Regen', sleet: 'Schneeregen', snow: 'Schnee', hail: 'Hagel', thunderstorm: 'Gewitter' };
 const COND = { fog: 'Nebel', rain: 'Regen', sleet: 'Schneeregen', snow: 'Schnee', hail: 'Hagel', thunderstorm: 'Gewitter' };
+// Luftqualität am Ort: Europäischer Luftqualitätsindex (EAQI) aus dem CAMS-Modell über Open-Meteo – Modellwerte, keine Messung
+const AQI_STEPS = [[20, 'gut', '#50c8a0'], [40, 'ausreichend', '#a0d050'], [60, 'mäßig', '#f0c020'], [80, 'schlecht', '#f07830'], [100, 'sehr schlecht', '#d02040'], [Infinity, 'extrem schlecht', '#801860']];
+const aqiStep = (v) => AQI_STEPS.findIndex(s => v <= s[0]);
+async function loadAir(lat, lon) {
+  const q = new URLSearchParams({ latitude: lat.toFixed(4), longitude: lon.toFixed(4), current: 'european_aqi,pm2_5,pm10,nitrogen_dioxide,ozone', hourly: 'european_aqi', timezone: 'auto', timeformat: 'unixtime', forecast_days: '2' });
+  const { data: d } = await fetchJSON(`${OM_AQ}?${q}`);
+  const c = d.current || {}, el = $('#airRow');
+  if (c.european_aqi == null) { el.hidden = true; return; }
+  const i = aqiStep(c.european_aqi), [, name, col] = AQI_STEPS[i];
+  // Verlauf bis Mitternacht: wird es später deutlich schlechter, steht das dabei
+  const now = Date.now(), end = addDays(dayStart(now), 1), h = d.hourly || {};
+  const rest = (h.time || []).map((t, k) => [t * 1000, h.european_aqi?.[k]]).filter(([t, v]) => t > now && t < end && v != null).map(([, v]) => v);
+  const worst = rest.length ? aqiStep(Math.max(...rest)) : i;
+  const val = (k, label) => c[k] != null ? `${label} ${fmt(c[k], 0)}` : '';
+  const parts = [val('pm2_5', 'PM2,5'), val('pm10', 'PM10'), val('nitrogen_dioxide', 'NO₂'), val('ozone', 'O₃')].filter(Boolean);
+  el.innerHTML = `<span class="aqdot" style="background:${col}"></span><span>Luft <b>${name}</b> (Index ${fmt(c.european_aqi, 0)})${worst > i ? `, später bis ${AQI_STEPS[worst][1]}` : ''}</span>`
+    + (parts.length ? `<span class="muted">${parts.join(' · ')} µg/m³</span>` : '');
+  el.title = 'Europäischer Luftqualitätsindex (0–20 gut … über 100 extrem schlecht) aus dem Copernicus-Modell CAMS über Open-Meteo – Modellwerte für den Ort, keine Messung';
+  el.hidden = false;
+}
 async function loadCurrent(lat, lon) {
   let d, fallback = false;
   if (S.station?.wmo) {
@@ -1545,7 +1565,10 @@ async function refresh() {
   const { lat, lon } = S.loc; offlineHits = 0;
   const jobs = [];
   if (isOn('warnings')) jobs.push(loadWarnings(lat, lon).catch(() => { $('#warnings').innerHTML = ''; }));
-  if (isOn('now')) { renderSun(); jobs.push(loadCurrent(lat, lon).catch(e => { $('#nowStation').textContent = `Aktuelle Werte nicht abrufbar (${e.message})`; })); }
+  if (isOn('now')) {
+    renderSun(); jobs.push(loadCurrent(lat, lon).catch(e => { $('#nowStation').textContent = `Aktuelle Werte nicht abrufbar (${e.message})`; }));
+    jobs.push(loadAir(lat, lon).catch(e => { $('#airRow').hidden = true; console.warn('Luftqualität:', e.message); }));
+  }
   else if (S.scene) jobs.push(getJSON(`${BS}/current_weather?lat=${lat.toFixed(4)}&lon=${lon.toFixed(4)}&tz=Europe/Berlin`).then(d => { sceneWx = d.weather; renderScene(); }).catch(() => {}));
   const radarJob = isOn('nowcast') ? loadRadar(lat, lon).then(renderNowcast).catch(() => renderNowcast(null)) : Promise.resolve();
   jobs.push(radarJob);
