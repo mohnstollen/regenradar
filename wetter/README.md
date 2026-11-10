@@ -1,4 +1,11 @@
-# Wetter-App (PWA) – Version 3.17.0
+# Wetter-App (PWA) – Version 3.18.1
+
+## Neu in 3.18
+- 3.18.1: Antippen eines Widgets öffnet die App mit dem Ort, den das Widget zeigt (z. B. ein Favorit), statt des
+  aktuellen Standorts.
+- Aktuelle Werte: neue Zeile zur Luftqualität am gewählten Ort – Europäischer Luftqualitätsindex (gut bis extrem
+  schlecht, farbiger Punkt) mit PM2,5, PM10, NO₂ und O₃ in µg/m³. Wird es im Laufe des Tages deutlich schlechter,
+  steht „später bis …“ dabei. Quelle: Copernicus-Modell CAMS über Open-Meteo (Modellwerte, keine Messung).
 
 ## Neu in 3.17
 - 10-Tage-Übersicht: Tippt man auf einen Tag, klappen darunter die Stundenwerte auf (00–23 Uhr) mit Symbol,

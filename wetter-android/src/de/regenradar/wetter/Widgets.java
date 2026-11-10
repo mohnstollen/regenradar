@@ -390,9 +390,11 @@ final class Widgets {
 
     private static String placeName(Place pl) { return pl == null ? "Ort in der App wählen" : pl.name; }
 
-    private static void openAppOnClick(Context c, RemoteViews v) {
+    /** Antippen öffnet die App mit dem Ort des Widgets; je Widget ein eigener PendingIntent (requestCode = Widget-ID). */
+    private static void openAppOnClick(Context c, RemoteViews v, int id, Place pl) {
         Intent open = new Intent(c, MainActivity.class).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK | Intent.FLAG_ACTIVITY_SINGLE_TOP);
-        v.setOnClickPendingIntent(R.id.root, PendingIntent.getActivity(c, 1, open, PendingIntent.FLAG_IMMUTABLE | PendingIntent.FLAG_UPDATE_CURRENT));
+        if (pl != null) open.putExtra(MainActivity.EXTRA_LAT, pl.lat).putExtra(MainActivity.EXTRA_LON, pl.lon).putExtra(MainActivity.EXTRA_NAME, pl.name);
+        v.setOnClickPendingIntent(R.id.root, PendingIntent.getActivity(c, id, open, PendingIntent.FLAG_IMMUTABLE | PendingIntent.FLAG_UPDATE_CURRENT));
     }
 
     private static void setWarn(RemoteViews v, JSONObject w) {
@@ -435,7 +437,7 @@ final class Widgets {
             v.setTextColor(R.id.temp, col[0]); v.setTextColor(R.id.place, col[0]);
             v.setTextColor(R.id.desc, col[1]); v.setTextColor(R.id.hilo, col[1]); v.setTextColor(R.id.updated, col[1]);
         }
-        openAppOnClick(c, v);
+        openAppOnClick(c, v, id, pl);
         return v;
     }
 
@@ -453,7 +455,7 @@ final class Widgets {
         RemoteViews v = new RemoteViews(c.getPackageName(), R.layout.widget_chart);
         v.setImageViewBitmap(R.id.chart, chartBitmap(c, cache(p, pl), hours(c, id), placeName(pl), sz[0], sz[1], rows, dark));
         v.setInt(R.id.root, "setBackgroundResource", dark ? R.drawable.widget_bg_dark : R.drawable.widget_bg_light);
-        openAppOnClick(c, v);
+        openAppOnClick(c, v, id, pl);
         return v;
     }
 
@@ -511,8 +513,7 @@ final class Widgets {
         }
         applyTheme(c, v, p.getString("theme", "system"), wide, large);
 
-        Intent open = new Intent(c, MainActivity.class).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK | Intent.FLAG_ACTIVITY_SINGLE_TOP);
-        v.setOnClickPendingIntent(R.id.root, PendingIntent.getActivity(c, 1, open, PendingIntent.FLAG_IMMUTABLE | PendingIntent.FLAG_UPDATE_CURRENT));
+        openAppOnClick(c, v, id, pl);
         return v;
     }
 
