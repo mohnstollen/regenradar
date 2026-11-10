@@ -37,6 +37,8 @@ import java.util.Map;
 public class MainActivity extends Activity {
     private static final String HOST = "appassets.androidplatform.net";
     private static final String START = "https://" + HOST + "/index.html";
+    // Ort, den ein angetipptes Widget zeigt – die App öffnet ihn statt des aktuellen Standorts
+    static final String EXTRA_LAT = "placeLat", EXTRA_LON = "placeLon", EXTRA_NAME = "placeName";
     private static final int REQ_LOCATION = 1, REQ_NOTIFY = 2;
     private static final String BRIDGE = "wetterapp:";
     // Zurück-Taste: erst offenen Dialog schließen, dann Vollbild-Karte beenden (window.appBack), sonst zurück bzw. beenden
@@ -113,7 +115,10 @@ public class MainActivity extends Activity {
             }
         });
 
-        if (state != null) web.restoreState(state);
+        Intent in = getIntent();
+        if (in != null && in.hasExtra(EXTRA_LAT)) web.loadUrl(START + "?place=" + Uri.encode(in.getDoubleExtra(EXTRA_LAT, 0) + ","
+            + in.getDoubleExtra(EXTRA_LON, 0)) + "&name=" + Uri.encode(String.valueOf(in.getStringExtra(EXTRA_NAME))));
+        else if (state != null) web.restoreState(state);
         else web.loadUrl(START);
         // Wecker und Hintergrundprüfung bei jedem Start neu stellen – manche Hersteller löschen sie beim Schließen der App
         DailyAlarm.schedule(this);
@@ -306,6 +311,15 @@ public class MainActivity extends Activity {
     protected void onSaveInstanceState(Bundle out) {
         super.onSaveInstanceState(out);
         web.saveState(out);
+    }
+
+    @Override
+    protected void onNewIntent(Intent in) {
+        super.onNewIntent(in);
+        setIntent(in);
+        if (!in.hasExtra(EXTRA_LAT)) return;
+        web.evaluateJavascript("window.showPlace && window.showPlace(" + in.getDoubleExtra(EXTRA_LAT, 0) + "," + in.getDoubleExtra(EXTRA_LON, 0)
+            + "," + JSONObject.quote(String.valueOf(in.getStringExtra(EXTRA_NAME))) + ")", null);
     }
 
     @Override

@@ -11,7 +11,7 @@
  * Pollen:      DWD Pollenflug-Gefahrenindex, außerhalb DE Open-Meteo/CAMS
  */
 'use strict';
-const APP_VERSION = '3.18.0';
+const APP_VERSION = '3.18.1';
 const WIZARD_VERSION = '3.11';
 
 // ---------- Endpunkte ----------
@@ -1550,6 +1550,12 @@ function setLocation(lat, lon, info, keepStation = false) {
   if (S.mapMode === 'wind') setMapMode('wind', false);
   refresh();
 }
+// Vom Android-Widget geöffnet: dessen Ort zeigen (Favorit samt Station, sonst Koordinaten mit Ortsname des Widgets)
+window.showPlace = (lat, lon, name) => {
+  if (!isFinite(lat) || !isFinite(lon)) return;
+  if (S.loc && sameLoc(S.loc, { lat, lon })) return;
+  setLocation(lat, lon, { name: name || '', sub: '' });
+};
 function renderLoc() {
   $('#locName').textContent = S.loc ? S.loc.name : 'Kein Standort';
   $('#locSub').textContent = S.loc ? (S.loc.sub || `${fmt(S.loc.lat, 3)}, ${fmt(S.loc.lon, 3)}`) : 'Standort ermitteln oder suchen';
@@ -1792,7 +1798,11 @@ function init() {
   $('#btnLayoutReset').onclick = () => { layoutDraft = SECTIONS.map(s => ({ id: s.id, on: true })); renderLayoutList(); commitLayout(); };
   discoverSatLayers().then(() => { if (S.mapMode === 'sat' || S.mapMode === 'both') setMapMode(S.mapMode, false); });
   if (S.loc) { drawMarker(); renderSun(); if (map) map.setView([S.loc.lat, S.loc.lon], 9); refresh(); }
-  const startLocate = () => { if (S.autoLocate || !S.loc) locate(); };
+  const qp = new URLSearchParams(location.search), wp = (qp.get('place') || '').split(',').map(Number);
+  if (qp.has('place')) history.replaceState(null, '', location.pathname);   // nur für diesen Start
+  const startLocate = wp.length === 2 && wp.every(isFinite)
+    ? () => window.showPlace(wp[0], wp[1], qp.get('name'))
+    : () => { if (S.autoLocate || !S.loc) locate(); };
   if (S.wizardFor !== WIZARD_VERSION) { afterLayout = startLocate; openLayout(true); } else startLocate();
   schedule();
   setInterval(() => { if (isOn('now')) renderSun(); renderScene(); }, 10 * MIN);
