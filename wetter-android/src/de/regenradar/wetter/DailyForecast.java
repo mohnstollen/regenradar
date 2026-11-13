@@ -64,8 +64,10 @@ final class DailyForecast {
         String place = p.getString("dailyName", "");
         long now = System.currentTimeMillis();
         Data d;
-        try { d = fetch(lat, lon, "icon_d2"); }
+        try { d = fetch(lat, lon, "dwd_icon_d2_native"); }   // icon_d2 stellt Open-Meteo am 30.11.2026 ein
         catch (Exception e) { d = fetch(lat, lon, "icon_seamless"); }   // außerhalb des ICON-D2-Gebiets
+        // Morgens: die Stunden, die ICON-D2-RUC abdeckt (jede Stunde neu gerechnet), daraus – der Rest bleibt ICON-D2
+        if (!evening) { try { d = overlay(d, fetch(lat, lon, "dwd_icon_d2_ruc_native")); } catch (Exception ignored) { } }
         String[] out = dayText(d.rows, now, evening);
         if (out == null) throw new Exception("keine Vorhersagedaten");
         StringBuilder body = new StringBuilder(out[0]);
@@ -105,6 +107,17 @@ final class DailyForecast {
         }
         if (d.rows.size() < 12) throw new Exception("keine Daten");
         return d;
+    }
+
+    /** Stunden von top ersetzen die gleichen Stunden von base (bis zur letzten Stunde von top); Höhe bleibt von base. */
+    static Data overlay(Data base, Data top) {
+        java.util.Map<Long, Row> m = new java.util.HashMap<>();
+        long last = Long.MIN_VALUE;
+        for (Row r : top.rows) { m.put(r.t, r); last = Math.max(last, r.t); }
+        Data out = new Data();
+        out.elevation = base.elevation;
+        for (Row r : base.rows) out.rows.add(r.t <= last && m.containsKey(r.t) ? m.get(r.t) : r);
+        return out;
     }
 
     private static double num(JSONObject h, String name, String model, int i) {

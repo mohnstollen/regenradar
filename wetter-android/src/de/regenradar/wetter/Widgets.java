@@ -281,8 +281,9 @@ final class Widgets {
     }
 
     /**
-     * Diagramm-Widgets: Temperatur, Sonne und Wind aus ICON-D2 (wie das Diagramm der App), Regenwahrscheinlichkeit aus
-     * MOSMIX. Für 48 Stunden „ICON kombiniert“, weil ICON-D2 nur etwa 48 h ab Modellstart reicht.
+     * Diagramm-Widgets: Temperatur, Sonne und Wind für 12/24 h aus ICON-D2-RUC (stündlich neu, ~27 h), sonst bzw. als
+     * Ersatz aus ICON-D2; Regenwahrscheinlichkeit aus MOSMIX. Für 48 Stunden „ICON kombiniert“, weil ICON-D2 nur etwa
+     * 48 h ab Modellstart reicht.
      */
     private static void chartData(JSONObject d, String key, String modelKey, double lat, double lon, Map<Long, Double> probAt,
                                   long now, int hours, boolean seamless) throws Exception {
@@ -290,8 +291,15 @@ final class Widgets {
         String model = seamless ? "ICON" : "ICON-D2";
         if (seamless) out = chartFrom(lat, lon, "icon_seamless", probAt, now, hours);
         else {
-            try { out = chartFrom(lat, lon, "icon_d2", probAt, now, hours); }
-            catch (Exception e) { out = chartFrom(lat, lon, "icon_seamless", probAt, now, hours); model = "ICON"; }   // außerhalb des ICON-D2-Gebiets
+            try {
+                out = chartFrom(lat, lon, "dwd_icon_d2_ruc_native", probAt, now, hours);
+                long last = out.getJSONObject(out.length() - 1).getLong("t");
+                if (last < now + (hours - 1) * 3600000L) throw new Exception("RUC reicht nicht");   // Lauf zu alt oder zu kurz
+                model = "ICON-D2-RUC";
+            } catch (Exception ruc) {
+                try { out = chartFrom(lat, lon, "dwd_icon_d2_native", probAt, now, hours); }
+                catch (Exception e) { out = chartFrom(lat, lon, "icon_seamless", probAt, now, hours); model = "ICON"; }   // außerhalb des ICON-D2-Gebiets
+            }
         }
         d.put(key, out).put(modelKey, model);
     }
