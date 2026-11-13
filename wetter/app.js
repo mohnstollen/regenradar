@@ -11,7 +11,7 @@
  * Pollen:      DWD Pollenflug-Gefahrenindex, außerhalb DE Open-Meteo/CAMS
  */
 'use strict';
-const APP_VERSION = '3.19.0';
+const APP_VERSION = '3.19.1';
 const WIZARD_VERSION = '3.11';
 
 // ---------- Endpunkte ----------
@@ -899,13 +899,22 @@ async function loadDayText(lat, lon) {
   };
   try { res = await get(model); }
   catch { model = MODELS.find(m => m.key === 'icon_seamless'); res = await get(model); }
-  const run = await modelRun(model);
+  let run = await modelRun(model), src = model.name.replace(/ \(.*\)$/, '');
+  // Für heute: die Stunden, die ICON-D2-RUC abdeckt (jede Stunde neu gerechnet), daraus – der Rest bleibt ICON-D2
+  if (model.key === 'dwd_icon_d2_native' && new Date().getHours() < 20) {
+    try {
+      const ruc = MODELS.find(m => m.key === 'dwd_icon_d2_ruc_native'), r = await get(ruc), by = new Map(r.rows.map(x => [x.t, x]));
+      const last = Math.max(...r.rows.map(x => x.t));
+      res = { ...res, rows: res.rows.map(x => x.t <= last && by.has(x.t) ? by.get(x.t) : x) };
+      run = await modelRun(ruc) || run; src = 'DWD ICON-D2-RUC';
+    } catch (e) { console.warn('ICON-D2-RUC:', e.message); }
+  }
   const out = buildDayText(res.rows, Date.now());
   if (!out) { $('#dayText').textContent = 'Keine Textprognose verfügbar.'; $('#dayIcon').innerHTML = ''; $('#daySource').textContent = ''; }
   else {
     $('#dayIcon').innerHTML = window.ICONS.weather(out.icon);
     $('#dayText').textContent = out.text;
-    $('#daySource').textContent = `${model.name.replace(' (2 km)', '')} · ${runTxt(run, res.at)}`;
+    $('#daySource').textContent = `${src} · ${runTxt(run, res.at)}`;
   }
   renderWinter(buildWinter(res.rows, res.elevation, Date.now()));
 }

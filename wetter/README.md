@@ -1,6 +1,9 @@
-# Wetter-App (PWA) – Version 3.19.0
+# Wetter-App (PWA) – Version 3.19.1
 
 ## Neu in 3.19
+- 3.19.1: ICON-D2-RUC auch in der Textprognose für heute (bis 20 Uhr), im Temperaturverlauf der Diagramm-Widgets
+  (12 und 24 Stunden, Kopfzeile „ICON-D2-RUC“) und in der Morgen-Benachrichtigung. Jeweils die Stunden, die RUC
+  abdeckt; danach bzw. wenn RUC fehlt ICON-D2.
 - Neues Modell im Vorhersagediagramm: DWD ICON-D2-RUC (Rapid Update Cycle) – 2,2 km wie ICON-D2, aber jede Stunde
   neu gerechnet, bis etwa +27 h. Gut für die nächsten Stunden (Schauer, Gewitter). Regenwahrscheinlichkeit liefert
   es nicht, sie wird wie bei anderen Modellen aus MOSMIX ergänzt. Ab „2 Tage“ zeigt das Diagramm ICON-D2.
