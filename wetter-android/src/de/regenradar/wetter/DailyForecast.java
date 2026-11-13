@@ -64,7 +64,7 @@ final class DailyForecast {
         String place = p.getString("dailyName", "");
         long now = System.currentTimeMillis();
         Data d;
-        try { d = fetch(lat, lon, "icon_d2"); }
+        try { d = fetch(lat, lon, "dwd_icon_d2_native"); }   // icon_d2 stellt Open-Meteo am 30.11.2026 ein
         catch (Exception e) { d = fetch(lat, lon, "icon_seamless"); }   // außerhalb des ICON-D2-Gebiets
         String[] out = dayText(d.rows, now, evening);
         if (out == null) throw new Exception("keine Vorhersagedaten");

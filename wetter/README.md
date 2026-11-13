@@ -1,4 +1,11 @@
-# Wetter-App (PWA) – Version 3.18.1
+# Wetter-App (PWA) – Version 3.19.0
+
+## Neu in 3.19
+- Neues Modell im Vorhersagediagramm: DWD ICON-D2-RUC (Rapid Update Cycle) – 2,2 km wie ICON-D2, aber jede Stunde
+  neu gerechnet, bis etwa +27 h. Gut für die nächsten Stunden (Schauer, Gewitter). Regenwahrscheinlichkeit liefert
+  es nicht, sie wird wie bei anderen Modellen aus MOSMIX ergänzt. Ab „2 Tage“ zeigt das Diagramm ICON-D2.
+- Umstellung auf die „Native“-Modelle von Open-Meteo (ICON-D2, ICON-EU): die bisherigen Varianten werden am 30.11.2026
+  eingestellt. Betrifft Diagramm, Textprognose, Widgets und Tagesvorhersage; die Auswahl wird automatisch übernommen.
 
 ## Neu in 3.18
 - 3.18.1: Antippen eines Widgets öffnet die App mit dem Ort, den das Widget zeigt (z. B. ein Favorit), statt des
@@ -105,6 +112,10 @@
 - Winterhinweise unter der Textprognose: Schneefallgrenze, Glättegefahr, Frost (ICON-D2, nächste 30 h)
 
 ## Modelle
-DWD ICON-D2, ICON-EU, ICON kombiniert, MOSMIX · ECMWF IFS, AIFS (über Open-Meteo bzw. Bright Sky)
+DWD ICON-D2-RUC, ICON-D2, ICON-EU, ICON kombiniert, MOSMIX · ECMWF IFS, AIFS (über Open-Meteo bzw. Bright Sky)
+
+ICON-D2 und ICON-EU kommen als „Native“-Modelle (`dwd_icon_d2_native`, `dwd_icon_eu_native`) von Open-Meteo; die
+umgerechneten Varianten `icon_d2`/`icon_eu` stellt Open-Meteo am 30.11.2026 ein. ICON-D2-RUC (`dwd_icon_d2_ruc_native`)
+wird jede Stunde neu gerechnet und reicht etwa 27 Stunden; für längere Zeiträume nimmt das Diagramm ICON-D2.
 
 Lokal testen: `python -m http.server 8000` → http://localhost:8000

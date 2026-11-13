@@ -290,7 +290,7 @@ final class Widgets {
         String model = seamless ? "ICON" : "ICON-D2";
         if (seamless) out = chartFrom(lat, lon, "icon_seamless", probAt, now, hours);
         else {
-            try { out = chartFrom(lat, lon, "icon_d2", probAt, now, hours); }
+            try { out = chartFrom(lat, lon, "dwd_icon_d2_native", probAt, now, hours); }
             catch (Exception e) { out = chartFrom(lat, lon, "icon_seamless", probAt, now, hours); model = "ICON"; }   // außerhalb des ICON-D2-Gebiets
         }
         d.put(key, out).put(modelKey, model);

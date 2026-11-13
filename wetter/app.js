@@ -11,7 +11,7 @@
  * Pollen:      DWD Pollenflug-Gefahrenindex, außerhalb DE Open-Meteo/CAMS
  */
 'use strict';
-const APP_VERSION = '3.18.1';
+const APP_VERSION = '3.19.0';
 const WIZARD_VERSION = '3.11';
 
 // ---------- Endpunkte ----------
@@ -56,9 +56,11 @@ const RANGES = [
 
 // ---------- Modelle (nur DWD und ECMWF) ----------
 const MODELS = [
-  { key: 'icon_d2', src: 'om', group: 'DWD', name: 'DWD ICON-D2 (2 km)', maxH: 48, meta: 'dwd_icon_d2', info: 'DWD-Regionalmodell, 2,2 km · alle 3 h neu · bis +48 h' },
-  { key: 'icon_eu', src: 'om', group: 'DWD', name: 'DWD ICON-EU (7 km)', maxH: 120, meta: 'dwd_icon_eu', info: 'DWD-Europamodell, ca. 7 km · alle 3 h neu · bis +5 Tage' },
-  { key: 'icon_seamless', src: 'om', group: 'DWD', name: 'DWD ICON kombiniert', maxH: 180, meta: 'dwd_icon_d2', info: 'DWD · ICON-D2 → ICON-EU → ICON global · bis ca. 7 Tage' },
+  // Open-Meteo stellt die umgerechneten ICON-Modelle (icon_d2, icon_eu, icon_global) am 30.11.2026 ein – daher die „Native“-Varianten
+  { key: 'dwd_icon_d2_ruc_native', src: 'om', group: 'DWD', name: 'DWD ICON-D2-RUC (2 km, stündlich)', maxH: 24, longer: 'dwd_icon_d2_native', meta: 'dwd_icon_d2_ruc_native', info: 'DWD-Kurzfristmodell (Rapid Update Cycle), 2,2 km · jede Stunde neu · bis ca. +27 h · ohne Regenwahrscheinlichkeit' },
+  { key: 'dwd_icon_d2_native', src: 'om', group: 'DWD', name: 'DWD ICON-D2 (2 km)', maxH: 48, meta: 'dwd_icon_d2_native', info: 'DWD-Regionalmodell, 2,2 km · alle 3 h neu · bis +48 h' },
+  { key: 'dwd_icon_eu_native', src: 'om', group: 'DWD', name: 'DWD ICON-EU (7 km)', maxH: 120, meta: 'dwd_icon_eu_native', info: 'DWD-Europamodell, ca. 7 km · alle 3 h neu · bis +5 Tage' },
+  { key: 'icon_seamless', src: 'om', group: 'DWD', name: 'DWD ICON kombiniert', maxH: 180, meta: 'dwd_icon_d2_native', info: 'DWD · ICON-D2 → ICON-EU → ICON global · bis ca. 7 Tage' },
   { key: 'mosmix', src: 'bs', group: 'DWD', name: 'DWD MOSMIX', maxH: 240, info: 'DWD · an Messstationen statistisch korrigierte Punktvorhersage · bis 10 Tage' },
   { key: 'ecmwf_ifs025', src: 'om', group: 'ECMWF', name: 'ECMWF IFS', maxH: 360, meta: 'ecmwf_ifs025', info: 'ECMWF · globales Referenzmodell · bis 15 Tage' },
   { key: 'ecmwf_aifs025', src: 'om', group: 'ECMWF', name: 'ECMWF AIFS (KI-Modell)', maxH: 360, meta: 'ecmwf_aifs025_single', info: 'ECMWF · KI-basiertes Modell · bis 15 Tage' }
@@ -89,7 +91,7 @@ const PCOL = ['#c8e6c9', '#e6ee9c', '#fff176', '#ffd54f', '#ffb74d', '#ff8a65', 
 
 const DEFAULTS = {
   loc: null, station: null, favs: [], basemap: 'bm_grau', sat: 'auto', satDay: '', satNight: '', intervalMin: 10,
-  notify: false, warnNotify: true, autoLocate: true, mapMode: 'radar', model: 'icon_d2', rangeH: 12,
+  notify: false, warnNotify: true, autoLocate: true, mapMode: 'radar', model: 'dwd_icon_d2_native', rangeH: 12,
   pollen: POLLEN.map(p => p.k), pollenRegion: 'auto', pollenHideZero: false,
   showFeels: true, showDew: true, layout: null, layoutSeen: [], wizardFor: null, theme: 'system', scene: true, glass: 84,
   rainRadius: 10, rainMin: 'all', stormNotify: false, stormRadius: 50,
@@ -100,7 +102,8 @@ let S = (() => {
   catch { return { ...DEFAULTS, favs: [] }; }
 })();
 const isUpgrade = !!localStorage.getItem(LS) && S.wizardFor !== WIZARD_VERSION;
-if (!MODELS.some(m => m.key === S.model)) S.model = 'icon_d2';   // entfernte Modelle → Standard
+S.model = { icon_d2: 'dwd_icon_d2_native', icon_eu: 'dwd_icon_eu_native' }[S.model] || S.model;   // alte Modellnamen (bis 3.18)
+if (!MODELS.some(m => m.key === S.model)) S.model = 'dwd_icon_d2_native';   // entfernte Modelle → Standard
 delete S.keys;
 const save = () => { localStorage.setItem(LS, JSON.stringify(S)); syncNative(); };
 
@@ -604,7 +607,8 @@ async function loadForecast(lat, lon) {
   const m = currentModel(), R = range();
   $('#chartTitle').textContent = R.title;
   $('#chartInfo').textContent = 'Lade Vorhersage …';
-  let used = m.maxH < R.h ? MOSMIX : m, res;
+  const longer = m.longer && MODELS.find(x => x.key === m.longer);   // RUC reicht nur ~1 Tag: für längere Zeiträume ICON-D2
+  let used = m.maxH >= R.h ? m : longer && longer.maxH >= R.h ? longer : MOSMIX, res;
   try { res = await fetchModel(used, lat, lon, R.h); }
   catch (e) {
     if (used === MOSMIX) throw e;
@@ -881,7 +885,7 @@ function initDays() {
 // ---------- Textprognose + Winterhinweise (ICON-D2) ----------
 async function loadDayText(lat, lon) {
   const vars = ['temperature_2m', 'dew_point_2m', 'precipitation', 'snowfall', 'weather_code', 'cloud_cover', 'wind_speed_10m', 'wind_gusts_10m', 'snowfall_height', 'freezing_level_height'];
-  let model = MODELS.find(m => m.key === 'icon_d2'), res;
+  let model = MODELS.find(m => m.key === 'dwd_icon_d2_native'), res;
   const get = async (m) => {
     const r = await omHourly(lat, lon, m.key, vars, 3);
     const c = Object.fromEntries(vars.map(v => [v, r.col(v)]));
