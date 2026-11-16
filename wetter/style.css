@@ -180,6 +180,17 @@ a { color: var(--primary); }
 #animTime.fc { color: #c35a00; font-weight: 600; }
 .map-foot { display: flex; justify-content: space-between; flex-wrap: wrap; gap: .4rem; margin-top: .45rem; color: var(--muted); }
 .legend i { display: inline-block; width: 11px; height: 11px; border-radius: 3px; margin: 0 3px 0 8px; vertical-align: -1px; }
+/* Karten als Bild teilen */
+section[data-sec] { position: relative; }
+.sharebtn { border: 0; background: transparent; color: var(--muted); width: 30px; height: 30px; padding: 4px; border-radius: 8px; cursor: pointer;
+  display: inline-grid; place-items: center; flex: none; margin-left: auto; }
+.sharebtn:active { background: var(--line); }
+.sharebtn .ico { width: 18px; height: 18px; }
+.sharebtn.inhead { margin-left: -.3rem; margin-right: auto; }
+.sharebtn.corner { position: absolute; top: .5rem; right: .5rem; z-index: 2; }
+.sharecap { margin-top: .5rem; padding-top: .4rem; border-top: 1px solid var(--line); color: var(--muted); }
+body.sharing .sharebtn, body.sharing .mapfull, body.sharing .leaflet-control-zoom { visibility: hidden; }
+body.sharing .topbar { visibility: hidden; }
 /* Karte im Vollbild */
 .mapwrap { position: relative; }
 .mapfull { position: absolute; top: 10px; right: 10px; z-index: 1000; width: 36px; height: 36px; display: grid; place-items: center; padding: 0; cursor: pointer;
@@ -287,3 +298,4 @@ dialog button.secondary { background: var(--bg); color: var(--text); border: 1px
 .toast { position: fixed; left: 50%; bottom: max(1.2rem, env(safe-area-inset-bottom)); transform: translateX(-50%); background: #222; color: #fff; padding: .6rem 1rem; border-radius: 10px; z-index: 9999; max-width: 92vw; font-size: .9rem; display: flex; gap: .7rem; align-items: center; }
 .toast button { background: #fff; color: #222; border: 0; border-radius: 6px; padding: .3rem .6rem; font: inherit; cursor: pointer; }
 .leaflet-popup-content button { padding: .35rem .7rem; border-radius: 6px; border: 0; background: var(--primary); color: #fff; cursor: pointer; }
+section[data-sec="daytext"] .daytext { padding-right: 1.6rem; }

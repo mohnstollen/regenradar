@@ -60,6 +60,9 @@
             android:excludeFromRecents="true">
             <intent-filter><action android:name="android.appwidget.action.APPWIDGET_CONFIGURE" /></intent-filter>
         </activity>
+        <!-- geteilte Kartenbilder für andere Apps (nur mit erteilter Leseberechtigung) -->
+        <provider android:name=".ShareProvider" android:authorities="de.regenradar.wetter.share"
+            android:exported="false" android:grantUriPermissions="true" />
         <receiver android:name=".DailyAlarm" android:exported="false" />
         <receiver android:name=".BootReceiver" android:exported="true">
             <intent-filter>

@@ -11,7 +11,7 @@
  * Pollen:      DWD Pollenflug-Gefahrenindex, außerhalb DE Open-Meteo/CAMS
  */
 'use strict';
-const APP_VERSION = '3.19.1';
+const APP_VERSION = '3.20.0';
 const WIZARD_VERSION = '3.11';
 
 // ---------- Endpunkte ----------
@@ -1376,6 +1376,35 @@ function setMapMode(mode, persist = true) {
   }
   updateMapTime();
 }
+// Karten als Bild teilen (nur Android-App): Teilen-Knopf je Karte; die App zeichnet den sichtbaren Kartenbereich,
+// darunter Ort und Uhrzeit, und öffnet das Teilen-Menü
+const SHARE_SECS = ['now', 'nowcast', 'daytext', 'chart', 'days', 'map', 'pollen'];
+function initShare() {
+  if (!NATIVE) return;
+  for (const id of SHARE_SECS) {
+    const sec = document.querySelector(`section[data-sec="${id}"]`); if (!sec) continue;
+    const b = document.createElement('button');
+    b.type = 'button'; b.className = 'sharebtn'; b.title = b.ariaLabel = 'Als Bild teilen'; b.innerHTML = I('share');
+    b.onclick = (e) => { e.stopPropagation(); shareCard(sec, id); };
+    const h3 = sec.querySelector('h3');
+    if (!h3) { b.classList.add('corner'); sec.append(b); }
+    else if (h3.parentElement !== sec) { b.classList.add('inhead'); h3.after(b); }   // Kopfzeile mit Auswahl/Reitern; Titel wird neu gesetzt
+    else h3.append(b);
+  }
+  window.__shareFailed = (m) => toast(`Teilen nicht möglich (${m})`);
+}
+async function shareCard(sec, id) {
+  const now = new Date(), cap = document.createElement('div');
+  cap.className = 'sharecap small';
+  cap.textContent = `${S.loc ? S.loc.name + ' · ' : ''}${WD[now.getDay()]} ${now.getDate()}.${now.getMonth() + 1}., ${hhmm(now)} Uhr · Wetter-App`;
+  sec.append(cap); document.body.classList.add('sharing');
+  sec.scrollIntoView({ block: sec.offsetHeight > innerHeight ? 'start' : 'center', behavior: 'instant' });
+  await new Promise(r => setTimeout(r, 400));   // Scrollen und Neuzeichnen abwarten
+  const r = sec.getBoundingClientRect(), title = (sec.querySelector('h3')?.textContent || '').trim();
+  native('shareCard', { x: r.left, y: Math.max(0, r.top), w: r.width, h: Math.min(r.bottom, innerHeight) - Math.max(0, r.top), file: `wetter-${id}`,
+    text: [title, S.loc?.name].filter(Boolean).join(' – ') });
+  setTimeout(() => { cap.remove(); document.body.classList.remove('sharing'); }, 700);
+}
 // Karte im Vollbild: Karte füllt den Bildschirm, Knopf oben rechts, Zurück-Taste oder Esc kehren zurück
 const mapCard = () => document.querySelector('section[data-sec="map"]');
 function setMapFull(on) {
@@ -1802,7 +1831,7 @@ function init() {
   $('#searchForm').onsubmit = (e) => { e.preventDefault(); doSearch(); };
   $('#tabRadar').onclick = () => setMapMode('radar'); $('#tabSat').onclick = () => setMapMode('sat');
   $('#tabBoth').onclick = () => setMapMode('both'); $('#tabWind').onclick = () => setMapMode('wind');
-  initMapFull(); initDays();
+  initMapFull(); initDays(); initShare();
   $('#btnPlay').onclick = playAnim;
   $('#btnAnimNow').onclick = () => { stopAnim(); showFrame(anim.nowIdx); };
   $('#animSlider').oninput = (e) => { stopAnim(); showFrame(Number(e.target.value)); };

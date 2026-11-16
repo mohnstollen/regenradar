@@ -5,7 +5,10 @@ import android.app.Activity;
 import android.content.ActivityNotFoundException;
 import android.content.Intent;
 import android.content.SharedPreferences;
+import android.content.ClipData;
 import android.content.pm.PackageManager;
+import android.graphics.Bitmap;
+import android.graphics.Canvas;
 import android.net.Uri;
 import android.os.Build;
 import android.os.Bundle;
@@ -25,6 +28,8 @@ import org.json.JSONArray;
 import org.json.JSONException;
 import org.json.JSONObject;
 
+import java.io.File;
+import java.io.FileOutputStream;
 import java.io.IOException;
 import java.io.InputStream;
 import java.util.HashMap;
@@ -129,6 +134,11 @@ public class MainActivity extends Activity {
         switch (a.getString(0)) {
             case "permission":
                 return JSONObject.quote(notifyPermission());
+            case "shareCard": {   // Bereich (CSS-Pixel im sichtbaren Ausschnitt) als Bild teilen
+                final JSONObject r = a.getJSONObject(1);
+                web.post(new Runnable() { @Override public void run() { shareCard(r); } });
+                return "true";
+            }
             case "requestPermission":
                 if (Notifier.allowed(this) || Build.VERSION.SDK_INT < 33) permissionResult();
                 else requestPermissions(new String[] { Notifier.POST_NOTIFICATIONS }, REQ_NOTIFY);
@@ -311,6 +321,36 @@ public class MainActivity extends Activity {
     protected void onSaveInstanceState(Bundle out) {
         super.onSaveInstanceState(out);
         web.saveState(out);
+    }
+
+    /** Sichtbaren Ausschnitt der WebView zeichnen, auf die Karte zuschneiden, als PNG speichern und teilen. */
+    private void shareCard(JSONObject r) {
+        try {
+            float d = getResources().getDisplayMetrics().density;   // CSS-Pixel → Bildschirmpixel (viewport width=device-width)
+            int x = Math.max(0, Math.round((float) r.getDouble("x") * d)), y = Math.max(0, Math.round((float) r.getDouble("y") * d));
+            int w = Math.min(web.getWidth() - x, Math.round((float) r.getDouble("w") * d));
+            int h = Math.min(web.getHeight() - y, Math.round((float) r.getDouble("h") * d));
+            if (w < 10 || h < 10) throw new IllegalStateException("Bereich nicht sichtbar");
+            Bitmap full = Bitmap.createBitmap(web.getWidth(), web.getHeight(), Bitmap.Config.ARGB_8888);
+            web.draw(new Canvas(full));
+            Bitmap card = Bitmap.createBitmap(full, x, y, w, h);
+            File dir = ShareProvider.dir(this);
+            if (!dir.isDirectory() && !dir.mkdirs()) throw new IOException("Cache nicht beschreibbar");
+            String name = r.optString("file", "wetter") + ".png";
+            if (!name.matches("[A-Za-z0-9_-]+\\.png")) name = "wetter.png";
+            FileOutputStream out = new FileOutputStream(new File(dir, name));
+            try { card.compress(Bitmap.CompressFormat.PNG, 100, out); } finally { out.close(); }
+            full.recycle(); card.recycle();
+            Uri uri = Uri.parse("content://" + ShareProvider.AUTHORITY + "/" + name);
+            Intent send = new Intent(Intent.ACTION_SEND).setType("image/png").putExtra(Intent.EXTRA_STREAM, uri)
+                .addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION);
+            String text = r.optString("text", "");
+            if (!text.isEmpty()) send.putExtra(Intent.EXTRA_TEXT, text);
+            send.setClipData(ClipData.newRawUri(name, uri));   // Leseberechtigung auch für das Vorschaubild im Teilen-Menü
+            startActivity(Intent.createChooser(send, "Wetter teilen"));
+        } catch (Exception e) {
+            web.evaluateJavascript("window.__shareFailed && window.__shareFailed(" + JSONObject.quote(String.valueOf(e.getMessage())) + ")", null);
+        }
     }
 
     @Override
