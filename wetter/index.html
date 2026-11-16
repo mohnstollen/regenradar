@@ -46,11 +46,18 @@
         <div>
           <div class="now-temp" id="nowTemp">– °C</div>
           <div class="now-desc" id="nowDesc">–</div>
+          <div class="now-sub small muted" id="nowSub"></div>
         </div>
       </div>
-      <div class="sunrow small" id="sunRow"></div>
-      <div class="now-details small" id="nowDetails"></div>
-      <div class="airrow small" id="airRow" hidden></div>
+      <div class="insight small" id="insight" hidden></div>
+      <div class="tiles small" id="nowTiles">
+        <div class="tile" id="tWind" hidden></div>
+        <div class="tile" id="tHum" hidden></div>
+        <div class="tile" id="tPress" hidden></div>
+        <div class="tile" id="tCloud" hidden></div>
+        <div class="tile wide" id="airRow" hidden></div>
+        <div class="tile wide suntile" id="sunRow"></div>
+      </div>
       <button class="station-btn small" id="btnStation" type="button">
         <span id="stationIco"></span><span id="nowStation">Station wird ermittelt …</span><span id="stationChevron"></span>
       </button>
