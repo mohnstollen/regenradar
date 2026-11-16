@@ -1,4 +1,9 @@
-# Wetter-App (PWA) – Version 3.19.1
+# Wetter-App (PWA) – Version 3.20.0
+
+## Neu in 3.20
+- Android-App: Karten als Bild teilen – Teilen-Symbol an Aktuelle Werte, Regen in 2 Stunden, Textprognose,
+  Vorhersagediagramm, 10 Tage, Karte und Pollenflug. Die App macht ein Bild der Karte (unten Ort, Datum und Uhrzeit)
+  und öffnet das Teilen-Menü, z. B. für Messenger. Ist eine Karte höher als der Bildschirm, wird ihr oberer Teil geteilt.
 
 ## Neu in 3.19
 - 3.19.1: ICON-D2-RUC auch in der Textprognose für heute (bis 20 Uhr), im Temperaturverlauf der Diagramm-Widgets
