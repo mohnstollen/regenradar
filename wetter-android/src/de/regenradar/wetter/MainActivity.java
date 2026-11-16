@@ -134,11 +134,16 @@ public class MainActivity extends Activity {
         switch (a.getString(0)) {
             case "permission":
                 return JSONObject.quote(notifyPermission());
-            case "shareCard": {   // Bereich (CSS-Pixel im sichtbaren Ausschnitt) als Bild teilen
+            case "shareBegin":   // Bild der Karte anlegen: {w, h} in CSS-Pixeln, file, text
+                return String.valueOf(shareBegin(a.getJSONObject(1)));
+            case "sharePart": {  // sichtbaren Teil kopieren: {x, y, w, h} im Fenster, dy = Lage in der Karte; Ergebnis per __sharePart
                 final JSONObject r = a.getJSONObject(1);
-                web.post(new Runnable() { @Override public void run() { shareCard(r); } });
+                web.post(new Runnable() { @Override public void run() { sharePart(r); } });
                 return "true";
             }
+            case "shareEnd":
+                web.post(new Runnable() { @Override public void run() { shareEnd(); } });
+                return "true";
             case "requestPermission":
                 if (Notifier.allowed(this) || Build.VERSION.SDK_INT < 33) permissionResult();
                 else requestPermissions(new String[] { Notifier.POST_NOTIFICATIONS }, REQ_NOTIFY);
@@ -323,24 +328,89 @@ public class MainActivity extends Activity {
         web.saveState(out);
     }
 
-    /** Sichtbaren Ausschnitt der WebView zeichnen, auf die Karte zuschneiden, als PNG speichern und teilen. */
-    private void shareCard(JSONObject r) {
+    /*
+     * Karte teilen: app.js scrollt die Karte abschnittsweise ins Bild; jeder sichtbare Abschnitt wird per PixelCopy aus den
+     * Bildschirmpixeln kopiert (zeigt genau, was auf dem Bildschirm steht, samt Karte und Diagrammen) und in ein Bild der
+     * ganzen Karte eingesetzt. WebView.draw() liefert bei Hardware-Beschleunigung oft einen veralteten oder leeren Stand
+     * und dient nur als Ersatz unter Android 8.
+     */
+    private Bitmap shareBmp;
+    private JSONObject shareMeta;
+
+    private float cssPx() { return getResources().getDisplayMetrics().density; }   // CSS-Pixel → Bildschirmpixel
+
+    private boolean shareBegin(JSONObject r) {
         try {
-            float d = getResources().getDisplayMetrics().density;   // CSS-Pixel → Bildschirmpixel (viewport width=device-width)
+            float d = cssPx();
+            int w = Math.round((float) r.getDouble("w") * d), h = Math.min(Math.round((float) r.getDouble("h") * d), 6000);
+            if (w < 10 || h < 10) return false;
+            if (shareBmp != null) shareBmp.recycle();
+            shareBmp = Bitmap.createBitmap(w, h, Bitmap.Config.ARGB_8888);
+            shareMeta = r;
+            return true;
+        } catch (Exception e) {
+            return false;
+        }
+    }
+
+    private void sharePart(JSONObject r) {
+        try {
+            if (shareBmp == null) throw new IllegalStateException("kein Bild angelegt");
+            float d = cssPx();
             int x = Math.max(0, Math.round((float) r.getDouble("x") * d)), y = Math.max(0, Math.round((float) r.getDouble("y") * d));
-            int w = Math.min(web.getWidth() - x, Math.round((float) r.getDouble("w") * d));
+            int w = Math.min(Math.min(web.getWidth() - x, shareBmp.getWidth()), Math.round((float) r.getDouble("w") * d));
             int h = Math.min(web.getHeight() - y, Math.round((float) r.getDouble("h") * d));
-            if (w < 10 || h < 10) throw new IllegalStateException("Bereich nicht sichtbar");
-            Bitmap full = Bitmap.createBitmap(web.getWidth(), web.getHeight(), Bitmap.Config.ARGB_8888);
-            web.draw(new Canvas(full));
-            Bitmap card = Bitmap.createBitmap(full, x, y, w, h);
+            final int dy = Math.round((float) r.getDouble("dy") * d);
+            if (w < 1 || h < 1 || dy >= shareBmp.getHeight()) { partDone(null); return; }
+            final Bitmap part = Bitmap.createBitmap(w, h, Bitmap.Config.ARGB_8888);
+            if (Build.VERSION.SDK_INT >= 26) {
+                int[] at = new int[2];
+                web.getLocationInWindow(at);   // Lage der WebView im Fenster (Statusleiste usw.)
+                android.graphics.Rect src = new android.graphics.Rect(at[0] + x, at[1] + y, at[0] + x + w, at[1] + y + h);
+                android.view.PixelCopy.request(getWindow(), src, part, new android.view.PixelCopy.OnPixelCopyFinishedListener() {
+                    @Override
+                    public void onPixelCopyFinished(int result) {
+                        if (result == android.view.PixelCopy.SUCCESS) { place(part, dy); partDone(null); }
+                        else partDone("Bild konnte nicht aufgenommen werden (" + result + ")");
+                    }
+                }, new android.os.Handler(android.os.Looper.getMainLooper()));
+            } else {
+                Canvas cv = new Canvas(part);
+                cv.translate(-x, -y);
+                web.draw(cv);
+                place(part, dy);
+                partDone(null);
+            }
+        } catch (Exception e) {
+            partDone(String.valueOf(e.getMessage()));
+        }
+    }
+
+    private void place(Bitmap part, int dy) {
+        new Canvas(shareBmp).drawBitmap(part, 0, dy, null);
+        part.recycle();
+    }
+
+    private void partDone(String err) {
+        web.evaluateJavascript("window.__sharePart && window.__sharePart(" + (err == null ? "null" : JSONObject.quote(err)) + ")", null);
+    }
+
+    private void shareEnd() {
+        if (shareBmp == null) { shareFailed("kein Bild angelegt"); return; }
+        Bitmap b = shareBmp;
+        shareBmp = null;
+        sendImage(b, shareMeta);
+    }
+
+    private void sendImage(Bitmap card, JSONObject r) {
+        try {
             File dir = ShareProvider.dir(this);
             if (!dir.isDirectory() && !dir.mkdirs()) throw new IOException("Cache nicht beschreibbar");
             String name = r.optString("file", "wetter") + ".png";
             if (!name.matches("[A-Za-z0-9_-]+\\.png")) name = "wetter.png";
             FileOutputStream out = new FileOutputStream(new File(dir, name));
             try { card.compress(Bitmap.CompressFormat.PNG, 100, out); } finally { out.close(); }
-            full.recycle(); card.recycle();
+            card.recycle();
             Uri uri = Uri.parse("content://" + ShareProvider.AUTHORITY + "/" + name);
             Intent send = new Intent(Intent.ACTION_SEND).setType("image/png").putExtra(Intent.EXTRA_STREAM, uri)
                 .addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION);
@@ -349,8 +419,12 @@ public class MainActivity extends Activity {
             send.setClipData(ClipData.newRawUri(name, uri));   // Leseberechtigung auch für das Vorschaubild im Teilen-Menü
             startActivity(Intent.createChooser(send, "Wetter teilen"));
         } catch (Exception e) {
-            web.evaluateJavascript("window.__shareFailed && window.__shareFailed(" + JSONObject.quote(String.valueOf(e.getMessage())) + ")", null);
+            shareFailed(e.getMessage());
         }
+    }
+
+    private void shareFailed(String msg) {
+        web.evaluateJavascript("window.__shareFailed && window.__shareFailed(" + JSONObject.quote(String.valueOf(msg)) + ")", null);
     }
 
     @Override
