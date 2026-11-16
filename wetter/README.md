@@ -1,4 +1,13 @@
-# Wetter-App (PWA) – Version 3.20.1
+# Wetter-App (PWA) – Version 3.21.0
+
+## Neu in 3.21
+- Hinweis-Zeile unter der aktuellen Temperatur: das Wichtigste bis Sonnenuntergang („HEUTE“) bzw. bis zum Morgen
+  („HEUTE NACHT“) in einem Satz – z. B. Gewitter, Sturmböen, Regen laut Radar („Regen ab etwa 17:20 – Schirm
+  mitnehmen“), Schnee, Regen laut Modell, Böen, Glätte, Frost, Nebel, Hitze, sonst „Bis zum Abend trocken“.
+  Daten: Radarvorhersage (nächste 2 h) und ICON-D2-RUC.
+- Aktuelle Werte als Kacheln: Wind mit Kompass und Windstärke in Worten, Luftfeuchte mit Balken und Taupunkt,
+  Luftdruck mit Skala, Wolken mit Niederschlag und Sicht, Luftqualität mit Farbskala, Sonne & Mond mit Sonnenbogen
+  (tagsüber über, nachts unter dem Horizont). Unter der Beschreibung Höchst-/Tiefstwert des Tages und „gefühlt“.
 
 ## Neu in 3.20
 - 3.20.1: Teilen zeigte falsche Ausschnitte oder leere Bilder. Das Bild entsteht jetzt aus den Bildschirmpixeln

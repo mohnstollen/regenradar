@@ -11,7 +11,7 @@
  * Pollen:      DWD Pollenflug-Gefahrenindex, außerhalb DE Open-Meteo/CAMS
  */
 'use strict';
-const APP_VERSION = '3.20.1';
+const APP_VERSION = '3.21.0';
 const WIZARD_VERSION = '3.11';
 
 // ---------- Endpunkte ----------
@@ -372,12 +372,27 @@ function renderSun() {
   const el = $('#sunRow'); if (!p) { el.innerHTML = ''; return; }
   const now = Date.now(); let st = sunTimes(now, p.lat, p.lon), label = '';
   if (st.set && now > st.set) { st = sunTimes(now + 24 * HOUR, p.lat, p.lon); label = ' (morgen)'; }
-  if (st.polar) { el.textContent = st.polar === 'day' ? 'Polartag – die Sonne geht nicht unter' : 'Polarnacht – die Sonne geht nicht auf'; return; }
+  if (st.polar) { el.innerHTML = `<div class="tl">Sonne &amp; Mond</div>${st.polar === 'day' ? 'Polartag – die Sonne geht nicht unter' : 'Polarnacht – die Sonne geht nicht auf'}`; return; }
   const len = Math.round((st.set - st.rise) / MIN);
-  el.innerHTML = `<span title="Sonnenaufgang${label} · ${esc(p.name)}">${I('sunrise')}<b>${hhmm(st.rise)}</b></span>`
-    + `<span title="Sonnenuntergang${label} · ${esc(p.name)}">${I('sunset')}<b>${hhmm(st.set)}</b></span>`
-    + `<span class="muted" title="Tageslänge">${I('daylen')}${Math.floor(len / 60)} h ${String(len % 60).padStart(2, '0')} min${label}</span>`
-    + moonRow(now, p);
+  // Sonnenbogen: tagsüber über dem Horizont (Aufgang → Untergang), nachts darunter (Untergang → nächster Aufgang)
+  const today = sunTimes(now, p.lat, p.lon), day = !today.polar && now >= today.rise && now < today.set;
+  // Bogen in einem 300 × 84 großen Feld, Horizont bei y = 52; Höchststand y = 8, tiefster Nachtpunkt y = 80
+  const X0 = 30, X1 = 270, HZ = 52;
+  let f, cy;
+  if (day) { f = (now - today.rise) / (today.set - today.rise); cy = 2 * 8 - HZ; }
+  else {
+    const prevSet = now < today.rise ? sunTimes(now - 24 * HOUR, p.lat, p.lon).set : today.set, nextRise = now < today.rise ? today.rise : st.rise;
+    f = Math.min(1, Math.max(0, (now - prevSet) / (nextRise - prevSet))); cy = 2 * 80 - HZ;
+  }
+  const u = 1 - f, sx = u * u * X0 + 2 * u * f * 150 + f * f * X1, sy = u * u * HZ + 2 * u * f * cy + f * f * HZ;
+  const arc = `<svg class="sunarc ${day ? 'day' : 'night'}" viewBox="0 0 300 84" preserveAspectRatio="xMidYMid meet" aria-hidden="true">`
+    + `<path class="arc" d="M${X0} ${HZ} Q150 ${2 * 8 - HZ} ${X1} ${HZ}"/><path class="arc nightarc" d="M${X0} ${HZ} Q150 ${2 * 80 - HZ} ${X1} ${HZ}"/>`
+    + `<path class="hz" d="M0 ${HZ} H300"/><circle class="sun" cx="${sx.toFixed(1)}" cy="${sy.toFixed(1)}" r="8"/></svg>`;
+  el.innerHTML = `<div class="tl">Sonne &amp; Mond</div>${arc}`
+    + `<div class="sunlbl"><span title="Sonnenaufgang${label} · ${esc(p.name)}">${I('sunrise')}<b>${hhmm(st.rise)}</b></span>`
+    + `<span class="muted" title="Tageslänge">${Math.floor(len / 60)} h ${String(len % 60).padStart(2, '0')} min${label}</span>`
+    + `<span title="Sonnenuntergang${label} · ${esc(p.name)}"><b>${hhmm(st.set)}</b>${I('sunset')}</span></div>`
+    + `<div class="sunrow">${moonRow(now, p)}</div>`;
 }
 function moonRow(now, p) {
   const mp = moonPhase(now), ev = moonEvents(now, 48, p.lat, p.lon), today = dayStart(now);
@@ -463,6 +478,126 @@ function renderScene() {
 // ---------- Aktuelles Wetter ----------
 const ICON_TXT = { 'clear-day': 'Sonnig', 'clear-night': 'Klar', 'partly-cloudy-day': 'Teilweise bewölkt', 'partly-cloudy-night': 'Teilweise bewölkt', cloudy: 'Bewölkt', fog: 'Nebel', wind: 'Windig', rain: 'Regen', sleet: 'Schneeregen', snow: 'Schnee', hail: 'Hagel', thunderstorm: 'Gewitter' };
 const COND = { fog: 'Nebel', rain: 'Regen', sleet: 'Schneeregen', snow: 'Schnee', hail: 'Hagel', thunderstorm: 'Gewitter' };
+// ---------- Kacheln der aktuellen Werte ----------
+const DIR_LONG = ['Nord', 'Nordost', 'Ost', 'Südost', 'Süd', 'Südwest', 'West', 'Nordwest'];
+const dirLong = (deg) => deg == null ? '' : DIR_LONG[Math.round((((deg % 360) + 360) % 360) / 45) % 8];
+const BFT = [[2, 'still'], [6, 'leiser Zug'], [12, 'leichte Brise'], [20, 'schwache Brise'], [29, 'mäßig'], [39, 'frisch'], [50, 'stark'], [62, 'steif'], [75, 'stürmisch'], [89, 'Sturm'], [Infinity, 'schwerer Sturm']];
+const step = (list, v) => list.find(s => v < s[0])[1];
+const tile = (label, value, sub, gfx = '') => `<div class="tl">${label}</div><div class="tbody"><div><div class="tv">${value}</div>${sub}</div>${gfx}</div>`;
+// senkrechter oder waagrechter Balken mit Markierung (0…1)
+const vbar = (f, fill = true) => `<div class="vbar"><i style="height:${fill ? (f * 100).toFixed(0) : 0}%"></i><b style="bottom:calc(${(f * 100).toFixed(0)}% - 4px)"></b></div>`;
+function renderTiles(v) {
+  const set = (id, html) => { const el = $(id); el.hidden = html == null; if (html != null) el.innerHTML = html; };
+  // Wind: Kompass mit Pfeil in Zugrichtung (wie im Diagramm)
+  set('#tWind', v.wind == null ? null : tile('Wind', `${fmt(v.wind, 0)}<small> km/h</small>`,
+    `<div class="tsub"><b>${step(BFT, v.wind)}</b></div><div class="tsub muted">${v.wdir != null ? `aus ${dirLong(v.wdir)}` : ''}${v.gust != null ? `${v.wdir != null ? ', ' : ''}Böen ${fmt(v.gust, 0)}` : ''}</div>`,
+    v.wdir == null ? '' : `<svg class="compass" viewBox="0 0 60 60" aria-hidden="true"><circle cx="30" cy="30" r="26"/><text x="30" y="12">N</text>`
+      + `<g transform="rotate(${(v.wdir + 180) % 360} 30 30)"><path d="M30 14 L39 40 L30 34 L21 40 Z"/></g></svg>`));
+  // Luftfeuchte mit Taupunkt
+  set('#tHum', v.hum == null ? null : tile('Luftfeuchte', `${fmt(v.hum, 0)}<small> %</small>`,
+    `<div class="tsub"><b>${step([[30, 'sehr trocken'], [45, 'trocken'], [70, 'angenehm'], [90, 'feucht'], [Infinity, 'sehr feucht']], v.hum)}</b></div>${v.dew != null ? `<div class="tsub muted">Taupunkt ${fmt(v.dew, 0)} °C</div>` : ''}`,
+    vbar(v.hum / 100)));
+  // Luftdruck (auf Meereshöhe) mit Skala 970–1050 hPa
+  if (v.press == null) set('#tPress', null);
+  else {
+    const f = Math.min(1, Math.max(0, (v.press - 970) / 80));
+    set('#tPress', tile('Luftdruck', `${fmt(v.press, 0)}<small> hPa</small>`,
+      `<div class="tsub"><b>${step([[995, 'tief'], [1008, 'eher tief'], [1020, 'normal'], [1030, 'eher hoch'], [Infinity, 'hoch']], v.press)}</b></div>`
+      + `<div class="pscale2"><span>${Array.from({ length: 21 }, (_, i) => `<i class="${i % 5 ? '' : 'big'}"></i>`).join('')}</span><b style="left:${(f * 100).toFixed(1)}%"></b></div>`
+      + `<div class="ends muted"><span>tief</span><span>hoch</span></div>`));
+  }
+  // Wolken, Niederschlag, Sicht
+  set('#tCloud', v.cloud == null && v.precip == null ? null : tile('Wolken', v.cloud != null ? `${fmt(v.cloud, 0)}<small> %</small>` : '–',
+    `<div class="tsub"><b>${v.cloud != null ? step([[13, 'klar'], [38, 'heiter'], [63, 'wolkig'], [88, 'stark bewölkt'], [Infinity, 'bedeckt']], v.cloud) : ''}</b></div>`
+    + `<div class="tsub muted">${v.precip != null ? `${fmt(v.precip)} mm/h` : ''}${v.vis != null ? `${v.precip != null ? ' · ' : ''}Sicht ${v.vis >= 10000 ? fmt(v.vis / 1000, 0) : fmt(v.vis / 1000, 1)} km` : ''}</div>`,
+    v.cloud != null ? vbar(v.cloud / 100) : ''));
+}
+
+// ---------- Hinweis-Zeile: das Wichtigste bis Sonnenuntergang bzw. bis zum Morgen ----------
+// Regeln nach Vorrang; Daten: ICON-D2-RUC (sonst ICON-D2 / ICON kombiniert) und die Radarvorhersage für die nächsten 2 h
+let insightFc = null, nowFeels = null;
+async function loadInsight(lat, lon) {
+  const vars = ['temperature_2m', 'precipitation', 'snowfall', 'weather_code', 'wind_gusts_10m'];
+  let rows = null;
+  for (const m of ['dwd_icon_d2_ruc_native', 'dwd_icon_d2_native', 'icon_seamless']) {
+    try {
+      const r = await omHourly(lat, lon, m, vars, 2), c = Object.fromEntries(vars.map(v => [v, r.col(v)]));
+      rows = r.time.map((t, i) => ({ t: t * 1000, temp: c.temperature_2m[i], mm: c.precipitation[i] ?? 0, snow: c.snowfall[i] ?? 0, code: c.weather_code[i], gust: c.wind_gusts_10m[i] }))
+        .filter(x => x.temp != null);
+      if (rows.filter(x => x.t > Date.now()).length >= 12) break;
+    } catch (e) { rows = null; }
+  }
+  insightFc = rows && rows.length ? { rows, lat, lon } : null;
+  renderNowSub(); renderInsight();
+}
+function renderNowSub() {
+  const today = dayStart(Date.now()), d = insightFc?.rows.filter(r => dayStart(r.t - 1) === today) || [];
+  const parts = [];
+  if (d.length >= 12) parts.push(`↑ ${fmt(Math.max(...d.map(r => r.temp)), 0)}° ↓ ${fmt(Math.min(...d.map(r => r.temp)), 0)}°`);
+  if (nowFeels != null) parts.push(`gefühlt ${fmt(nowFeels, 0)}°`);
+  $('#nowSub').textContent = parts.join(' · ');
+}
+const atHour = (t) => `${new Date(t).getHours()} Uhr`;
+function insightWindow(now) {
+  const p = S.loc; if (!p) return null;
+  let st = sunTimes(now, p.lat, p.lon);
+  if (st.polar) return { end: now + 12 * HOUR, head: st.polar === 'day' ? 'Heute' : 'Heute Nacht', day: st.polar === 'day' };
+  if (now >= st.rise && now < st.set) return { end: Math.max(st.set, now + 3 * HOUR), head: 'Heute', day: true };
+  if (now >= st.set) st = sunTimes(now + 24 * HOUR, p.lat, p.lon);
+  return { end: st.rise, head: new Date(now).getHours() >= 12 ? 'Heute Nacht' : 'Bis zum Morgen', day: false };
+}
+function buildInsight(now = Date.now()) {
+  const w = insightWindow(now), fc = insightFc?.rows;
+  if (!w) return null;
+  const nc = lastNowcast && now - lastNowcastAt < 20 * MIN ? lastNowcast : null;
+  const hourStart = now - now % HOUR;
+  const win = (fc || []).filter(r => r.t > hourStart && r.t <= w.end + HOUR);   // Stundenwerte gelten für die Stunde davor
+  const say = (cls, icon, text) => ({ head: w.head, cls, icon, text });
+  const first = (f) => win.find(f), max = (k) => Math.max(...win.map(r => r[k] ?? -Infinity)), min = (k) => Math.min(...win.map(r => r[k] ?? Infinity));
+  // 1. Gewitter
+  const storm = first(r => r.code >= 95);
+  if (storm) return say('warn', 'warn', `Gewitter möglich, am ehesten gegen ${atHour(storm.t)}.`);
+  // 2. Orkanartige/stürmische Böen
+  const gmax = win.length ? max('gust') : -Infinity;
+  if (gmax >= 75) return say('warn', 'wind', `Sturmböen bis ${fmt(gmax, 0)} km/h, am stärksten gegen ${atHour(win.find(r => r.gust === gmax).t)}.`);
+  // 3. Radar: regnet gerade bzw. Regen kommt
+  if (nc?.atLoc) return say('rain', 'rainIco', nc.until != null ? `Es regnet – laut Radar vorbei gegen ${hhmm(now + nc.until * MIN)}.` : 'Es regnet und hört laut Radar in den nächsten 2 Stunden nicht auf. Schirm mitnehmen.');
+  if (nc?.eta != null) return say('rain', 'rainIco', `Regen ab etwa ${hhmm(now + nc.eta * MIN)} – Schirm mitnehmen.`);
+  // 4. Schnee
+  const snowSum = win.reduce((a, r) => a + (r.snow || 0), 0);
+  if (snowSum >= 0.3) return say('rain', 'snowflake', `Schneefall ab etwa ${atHour(first(r => r.snow > 0).t - HOUR)}, zusammen etwa ${fmt(snowSum, snowSum < 3 ? 1 : 0)} cm.`);
+  // 5. Regen laut Modell (die nächsten 2 h deckt das Radar ab, wenn vorhanden)
+  const rainRows = win.filter(r => r.mm >= 0.1 && (!nc || r.t > now + 2 * HOUR)), rainSum = rainRows.reduce((a, r) => a + r.mm, 0);
+  if (rainSum >= 0.3) {
+    const from = rainRows[0].t - HOUR, to = rainRows[rainRows.length - 1].t;
+    const many = rainRows.length >= Math.max(3, win.filter(r => r.t > from).length * 0.6);
+    return say('rain', 'umbrella', many ? `Ab etwa ${atHour(from)} nass bis ${to >= w.end ? (w.day ? 'zum Abend' : 'zum Morgen') : `etwa ${atHour(to)}`} – zusammen ca. ${fmt(rainSum)} mm.`
+      : `Zeitweise Regen ab etwa ${atHour(from)}, zusammen ca. ${fmt(rainSum)} mm.`);
+  }
+  // 6. Stürmische Böen
+  if (gmax >= 55) return say('warn', 'wind', `Böen bis ${fmt(gmax, 0)} km/h, am stärksten gegen ${atHour(win.find(r => r.gust === gmax).t)}.`);
+  // 7. Glätte und Frost
+  const tmin = win.length ? min('temp') : null, tmax = win.length ? max('temp') : null;
+  const wetBefore = (fc || []).some(r => r.t > now - 6 * HOUR && r.t <= w.end && r.mm >= 0.1);
+  if (tmin != null && tmin <= 0.5 && wetBefore) return say('warn', 'ice', `Glättegefahr – nasse Straßen können bei ${fmt(tmin, 0)} °C überfrieren.`);
+  if (tmin != null && tmin <= 0 && !w.day) return say('info', 'snowflake', `Frost bis ${fmt(tmin, 0)} °C – morgen früh Scheiben kratzen.`);
+  if (tmax != null && tmax < 0 && w.day) return say('info', 'snowflake', `Dauerfrost, höchstens ${fmt(tmax, 0)} °C.`);
+  // 8. Nebel (jetzt laut Station oder in den nächsten 3 Stunden laut Modell)
+  if (sceneWx?.condition === 'fog' || sceneWx?.icon === 'fog' || win.some(r => r.t <= now + 3 * HOUR && (r.code === 45 || r.code === 48)))
+    return say('info', 'cloud', 'Nebel – Sicht eingeschränkt, vorsichtig fahren.');
+  // 9. Hitze
+  if (tmax != null && tmax >= 30) return say('warn', 'thermo', `Heiß bis ${fmt(tmax, 0)} °C – viel trinken, Mittagssonne meiden.`);
+  // 10. ruhig
+  if (!win.length) return null;
+  return say('ok', 'check', w.day ? `Bis zum Abend trocken, höchstens ${fmt(tmax, 0)} °C.` : `${w.head === 'Heute Nacht' ? 'Die Nacht bleibt' : 'Bleibt bis zum Morgen'} trocken, tiefstens ${fmt(tmin, 0)} °C.`);
+}
+function renderInsight() {
+  const el = $('#insight'), x = buildInsight();
+  el.hidden = !x; if (!x) return;
+  el.className = `insight small ${x.cls}`;
+  el.innerHTML = `<span class="ihead">${esc(x.head.toUpperCase())}</span><span class="itext">${I(x.icon)}<span>${esc(x.text)}</span></span>`;
+}
+
 // Luftqualität am Ort: Europäischer Luftqualitätsindex (EAQI) aus dem CAMS-Modell über Open-Meteo – Modellwerte, keine Messung
 const AQI_STEPS = [[20, 'gut', '#50c8a0'], [40, 'ausreichend', '#a0d050'], [60, 'mäßig', '#f0c020'], [80, 'schlecht', '#f07830'], [100, 'sehr schlecht', '#d02040'], [Infinity, 'extrem schlecht', '#801860']];
 const aqiStep = (v) => AQI_STEPS.findIndex(s => v <= s[0]);
@@ -478,8 +613,9 @@ async function loadAir(lat, lon) {
   const worst = rest.length ? aqiStep(Math.max(...rest)) : i;
   const val = (k, label) => c[k] != null ? `${label} ${fmt(c[k], 0)}` : '';
   const parts = [val('pm2_5', 'PM2,5'), val('pm10', 'PM10'), val('nitrogen_dioxide', 'NO₂'), val('ozone', 'O₃')].filter(Boolean);
-  el.innerHTML = `<span class="aqdot" style="background:${col}"></span><span>Luft <b>${name}</b> (Index ${fmt(c.european_aqi, 0)})${worst > i ? `, später bis ${AQI_STEPS[worst][1]}` : ''}</span>`
-    + (parts.length ? `<span class="muted">${parts.join(' · ')} µg/m³</span>` : '');
+  el.innerHTML = tile('Luftqualität', `${fmt(c.european_aqi, 0)} <small style="color:${col}">${name}</small>`,
+    `<div class="aqbar"><b style="left:${Math.min(100, c.european_aqi).toFixed(1)}%;background:${col}"></b></div>`
+    + `<div class="tsub muted">${worst > i ? `später bis <b>${AQI_STEPS[worst][1]}</b> · ` : ''}${parts.length ? `${parts.join(' · ')} µg/m³` : ''}</div>`);
   el.title = 'Europäischer Luftqualitätsindex (0–20 gut … über 100 extrem schlecht) aus dem Copernicus-Modell CAMS über Open-Meteo – Modellwerte für den Ort, keine Messung';
   el.hidden = false;
 }
@@ -500,14 +636,9 @@ async function loadCurrent(lat, lon) {
   const gust = c.wind_gust_speed_10 ?? c.wind_gust_speed_30 ?? c.wind_gust_speed_60;
   const precip = c.precipitation_60 ?? c.precipitation_30 ?? c.precipitation_10;
   const feels = apparentTemp(c.temperature, c.relative_humidity, wind);
-  $('#nowDetails').innerHTML = [
-    feels != null && Math.abs(feels - c.temperature) >= 1 && `<span>${I('thermo')}gefühlt <b>${fmt(feels, 0)} °C</b></span>`,
-    wind != null && `<span>${I('wind')}<b>${fmt(wind, 0)} km/h</b> ${dirName(wdir)}${gust != null ? `, Böen ${fmt(gust, 0)}` : ''}</span>`,
-    c.relative_humidity != null && `<span>${I('drop')}<b>${fmt(c.relative_humidity, 0)} %</b>${c.dew_point != null ? `, Taupunkt ${fmt(c.dew_point, 0)} °C` : ''}</span>`,
-    precip != null && `<span>${I('umbrella')}<b>${fmt(precip)} mm</b>/h</span>`,
-    c.cloud_cover != null && `<span>${I('cloud')}<b>${fmt(c.cloud_cover, 0)} %</b></span>`,
-    c.pressure_msl != null && `<span>${I('gauge')}<b>${fmt(c.pressure_msl, 0)} hPa</b></span>`
-  ].filter(Boolean).join('');
+  nowFeels = feels != null && Math.abs(feels - c.temperature) >= 1 ? feels : null; renderNowSub();
+  renderTiles({ wind, wdir, gust, precip, hum: c.relative_humidity, dew: c.dew_point, press: c.pressure_msl, cloud: c.cloud_cover, vis: c.visibility });
+  renderInsight();
   const dist = src && S.loc ? distKm(S.loc.lat, S.loc.lon, src.lat, src.lon) : null;
   $('#nowStation').textContent = `Station ${src?.station_name ?? '–'}${dist != null ? ` · ${fmt(dist, 0)} km` : ''} · ${hhmm(new Date(c.timestamp))} Uhr`;
   $('#btnStation').title = `DWD-Station ${src?.station_name ?? ''} (${S.station ? 'gewählt' : 'nächste'}) – antippen zum Wechseln`;
@@ -1503,9 +1634,10 @@ async function loadRadar(lat, lon) {
   return { st, ni, t: cur.t, atLoc: cur.loc >= RAIN_RAW, mmh: cur.loc * 0.12, eta, until, minD: cur.minD, minB: cur.minB };
 }
 const rainCol = (mmh) => mmh < 0.5 ? '#9fd3ff' : mmh < 2 ? '#2f7fff' : mmh < 10 ? '#f5c400' : '#e0282e';
-let lastNowcast;
+let lastNowcast, lastNowcastAt = 0;
 function renderNowcast(r) {
-  lastNowcast = r;
+  lastNowcast = r; lastNowcastAt = Date.now();
+  if (isOn('now')) renderInsight();
   if (sceneRainNow !== !!r?.atLoc) { sceneRainNow = !!r?.atLoc; renderScene(); }
   const el = $('#rainHint');
   if (!r) { el.className = 'rainhint small'; el.innerHTML = ''; $('#ncChart').innerHTML = ''; $('#ncInfo').textContent = 'Radardaten derzeit nicht abrufbar.'; return; }
@@ -1630,6 +1762,7 @@ async function refresh() {
   if (isOn('now')) {
     renderSun(); jobs.push(loadCurrent(lat, lon).catch(e => { $('#nowStation').textContent = `Aktuelle Werte nicht abrufbar (${e.message})`; }));
     jobs.push(loadAir(lat, lon).catch(e => { $('#airRow').hidden = true; console.warn('Luftqualität:', e.message); }));
+    jobs.push(loadInsight(lat, lon).catch(e => { console.warn('Hinweis:', e.message); }));
   }
   else if (S.scene) jobs.push(getJSON(`${BS}/current_weather?lat=${lat.toFixed(4)}&lon=${lon.toFixed(4)}&tz=Europe/Berlin`).then(d => { sceneWx = d.weather; renderScene(); }).catch(() => {}));
   const radarJob = isOn('nowcast') ? loadRadar(lat, lon).then(renderNowcast).catch(() => renderNowcast(null)) : Promise.resolve();
@@ -1861,7 +1994,7 @@ function init() {
     : () => { if (S.autoLocate || !S.loc) locate(); };
   if (S.wizardFor !== WIZARD_VERSION) { afterLayout = startLocate; openLayout(true); } else startLocate();
   schedule();
-  setInterval(() => { if (isOn('now')) renderSun(); renderScene(); }, 10 * MIN);
+  setInterval(() => { if (isOn('now')) { renderSun(); renderInsight(); } renderScene(); }, 10 * MIN);
 }
 let rsT;
 window.addEventListener('resize', () => { clearTimeout(rsT); rsT = setTimeout(() => { if (lastChart) drawChart(...lastChart); if (lastNowcast) renderNowcast(lastNowcast); }, 150); });
