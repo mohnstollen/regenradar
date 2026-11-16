@@ -11,7 +11,7 @@
  * Pollen:      DWD Pollenflug-Gefahrenindex, außerhalb DE Open-Meteo/CAMS
  */
 'use strict';
-const APP_VERSION = '3.20.0';
+const APP_VERSION = '3.20.1';
 const WIZARD_VERSION = '3.11';
 
 // ---------- Endpunkte ----------
@@ -1394,16 +1394,30 @@ function initShare() {
   window.__shareFailed = (m) => toast(`Teilen nicht möglich (${m})`);
 }
 async function shareCard(sec, id) {
-  const now = new Date(), cap = document.createElement('div');
+  const now = new Date(), cap = document.createElement('div'), wait = (ms) => new Promise(r => setTimeout(r, ms));
   cap.className = 'sharecap small';
   cap.textContent = `${S.loc ? S.loc.name + ' · ' : ''}${WD[now.getDay()]} ${now.getDate()}.${now.getMonth() + 1}., ${hhmm(now)} Uhr · Wetter-App`;
   sec.append(cap); document.body.classList.add('sharing');
-  sec.scrollIntoView({ block: sec.offsetHeight > innerHeight ? 'start' : 'center', behavior: 'instant' });
-  await new Promise(r => setTimeout(r, 400));   // Scrollen und Neuzeichnen abwarten
-  const r = sec.getBoundingClientRect(), title = (sec.querySelector('h3')?.textContent || '').trim();
-  native('shareCard', { x: r.left, y: Math.max(0, r.top), w: r.width, h: Math.min(r.bottom, innerHeight) - Math.max(0, r.top), file: `wetter-${id}`,
-    text: [title, S.loc?.name].filter(Boolean).join(' – ') });
-  setTimeout(() => { cap.remove(); document.body.classList.remove('sharing'); }, 700);
+  const scrollBack = scrollY, title = (sec.querySelector('h3')?.textContent || '').trim();
+  try {
+    const r0 = sec.getBoundingClientRect(), total = Math.ceil(r0.height), top0 = r0.top + scrollY;
+    if (!native('shareBegin', { w: r0.width, h: total, file: `wetter-${id}`, text: [title, S.loc?.name].filter(Boolean).join(' – ') })) throw new Error('Bild nicht anlegbar');
+    // Abschnittsweise: Karte so scrollen, dass der nächste Teil oben im Bild steht, sichtbaren Teil kopieren lassen
+    for (let off = 0, n = 0; off < total - 1 && n < 12; n++) {
+      window.scrollTo({ top: top0 + off, behavior: 'instant' });
+      await wait(n ? 250 : 400);   // Scrollen und Neuzeichnen abwarten
+      const r = sec.getBoundingClientRect(), top = Math.max(0, r.top), h = Math.min(r.bottom, innerHeight) - top, dy = top - r.top;
+      if (h < 1) break;
+      const err = await new Promise(res => { window.__sharePart = res; native('sharePart', { x: r.left, y: top, w: r.width, h, dy }); });
+      if (err) throw new Error(err);
+      off = dy + h;
+    }
+    native('shareEnd');
+  } catch (e) { toast(`Teilen nicht möglich (${e.message})`); }
+  finally {
+    window.__sharePart = null;
+    setTimeout(() => { cap.remove(); document.body.classList.remove('sharing'); window.scrollTo({ top: scrollBack, behavior: 'instant' }); }, 300);
+  }
 }
 // Karte im Vollbild: Karte füllt den Bildschirm, Knopf oben rechts, Zurück-Taste oder Esc kehren zurück
 const mapCard = () => document.querySelector('section[data-sec="map"]');
