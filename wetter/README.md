@@ -1,4 +1,10 @@
-# Wetter-App (PWA) – Version 3.21.0
+# Wetter-App (PWA) – Version 3.22.0
+
+## Neu in 3.22
+- Karte: neuer Reiter „Warnungen“ – amtliche DWD-Warnungen nach Gemeinden, eingefärbt nach Stufe (Warnung, markant,
+  Unwetter, extrem). Antippen eines Gebiets zeigt die Warnungen dort mit Stufe und Gültigkeit.
+- Aktuelle Werte: Kachel „Schnee“ mit Schneehöhe, Neuschnee in den nächsten 24 Stunden und Schneehöhe am nächsten
+  Morgen (ICON-D2-RUC, Modellwert für den Ort). Erscheint nur, wenn Schnee liegt oder Neuschnee erwartet wird.
 
 ## Neu in 3.21
 - Hinweis-Zeile unter der aktuellen Temperatur: das Wichtigste bis Sonnenuntergang („HEUTE“) bzw. bis zum Morgen

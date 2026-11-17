@@ -55,6 +55,7 @@
         <div class="tile" id="tHum" hidden></div>
         <div class="tile" id="tPress" hidden></div>
         <div class="tile" id="tCloud" hidden></div>
+        <div class="tile wide" id="tSnow" hidden></div>
         <div class="tile wide" id="airRow" hidden></div>
         <div class="tile wide suntile" id="sunRow"></div>
       </div>
@@ -107,6 +108,7 @@
           <button id="tabSat" role="tab">Satellit</button>
           <button id="tabBoth" role="tab">Beides</button>
           <button id="tabWind" role="tab">Wind</button>
+          <button id="tabWarn" role="tab">Warnungen</button>
         </div>
       </div>
       <div class="mapwrap">
@@ -127,6 +129,12 @@
           <i style="background:#2f7fff"></i>mäßig
           <i style="background:#f5c400"></i>stark
           <i style="background:#e0282e"></i>Starkregen
+        </span>
+        <span class="legend" id="warnLegend" style="display:none">
+          <i style="background:#ffeb3b"></i>Warnung
+          <i style="background:#fb8c00"></i>markant
+          <i style="background:#e53935"></i>Unwetter
+          <i style="background:#880e4f"></i>extrem
         </span>
       </div>
     </section>

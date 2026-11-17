@@ -71,6 +71,7 @@ a { color: var(--primary); }
 .tile .tv small { font-size: .8rem; font-weight: 500; }
 .tile .tsub { margin-top: .1rem; line-height: 1.3; }
 .tile .tsub b { font-weight: 600; }
+.snowico .ico { width: 44px; height: 44px; color: #74c0fc; }
 .compass { width: 56px; height: 56px; flex: none; }
 .compass circle { fill: none; stroke: var(--line2); stroke-width: 1.5; }
 .compass text { fill: var(--muted); font-size: 9px; font-weight: 700; text-anchor: middle; }
@@ -253,6 +254,8 @@ body.scene .mapcard.full { background: var(--card); -webkit-backdrop-filter: non
 .mapcard.full .mapwrap { flex: 1; min-height: 0; }
 .mapcard.full #map, .mapcard.full .windy { height: 100%; }
 .mapcard.full #map[hidden], .mapcard.full .windy[hidden] { display: none; }
+.wpop { display: flex; gap: .5rem; align-items: flex-start; margin: .2rem 0 .45rem; }
+.wpop i { width: 12px; height: 12px; border-radius: 3px; flex: none; margin-top: .25rem; box-shadow: 0 0 0 1px rgba(0,0,0,.2); }
 .nomap { display: grid; place-items: center; height: 100%; color: var(--muted); padding: 1rem; text-align: center; }
 
 /* Pollen */

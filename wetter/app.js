@@ -11,7 +11,7 @@
  * Pollen:      DWD Pollenflug-Gefahrenindex, außerhalb DE Open-Meteo/CAMS
  */
 'use strict';
-const APP_VERSION = '3.21.0';
+const APP_VERSION = '3.22.0';
 const WIZARD_VERSION = '3.11';
 
 // ---------- Endpunkte ----------
@@ -517,18 +517,34 @@ function renderTiles(v) {
 // Regeln nach Vorrang; Daten: ICON-D2-RUC (sonst ICON-D2 / ICON kombiniert) und die Radarvorhersage für die nächsten 2 h
 let insightFc = null, nowFeels = null;
 async function loadInsight(lat, lon) {
-  const vars = ['temperature_2m', 'precipitation', 'snowfall', 'weather_code', 'wind_gusts_10m'];
+  const vars = ['temperature_2m', 'precipitation', 'snowfall', 'weather_code', 'wind_gusts_10m', 'snow_depth'];
   let rows = null;
   for (const m of ['dwd_icon_d2_ruc_native', 'dwd_icon_d2_native', 'icon_seamless']) {
     try {
       const r = await omHourly(lat, lon, m, vars, 2), c = Object.fromEntries(vars.map(v => [v, r.col(v)]));
-      rows = r.time.map((t, i) => ({ t: t * 1000, temp: c.temperature_2m[i], mm: c.precipitation[i] ?? 0, snow: c.snowfall[i] ?? 0, code: c.weather_code[i], gust: c.wind_gusts_10m[i] }))
+      rows = r.time.map((t, i) => ({ t: t * 1000, temp: c.temperature_2m[i], mm: c.precipitation[i] ?? 0, snow: c.snowfall[i] ?? 0, code: c.weather_code[i], gust: c.wind_gusts_10m[i], sd: c.snow_depth[i] ?? null }))
         .filter(x => x.temp != null);
       if (rows.filter(x => x.t > Date.now()).length >= 12) break;
     } catch (e) { rows = null; }
   }
   insightFc = rows && rows.length ? { rows, lat, lon } : null;
-  renderNowSub(); renderInsight();
+  renderNowSub(); renderInsight(); renderSnow();
+}
+// Schnee-Kachel: Schneehöhe (Modell) jetzt und morgen früh, Neuschnee in den nächsten 24 h – nur wenn Schnee liegt oder kommt
+function renderSnow() {
+  const el = $('#tSnow'), rows = insightFc?.rows || [], now = Date.now();
+  const cur = rows.filter(r => r.sd != null && r.t <= now + HOUR).pop() || rows.find(r => r.sd != null);
+  const depth = cur ? cur.sd * 100 : 0;   // m → cm
+  const next = rows.filter(r => r.t > now && r.t <= now + 24 * HOUR), fresh = next.reduce((a, r) => a + (r.snow || 0), 0);
+  if (depth < 0.5 && fresh < 0.5) { el.hidden = true; return; }
+  const morning = new Date(now); morning.setHours(7, 0, 0, 0); if (morning.getTime() <= now) morning.setDate(morning.getDate() + 1);
+  const m = rows.find(r => r.t === morning.getTime() && r.sd != null), mDepth = m ? m.sd * 100 : null;
+  const cm = (v) => `${fmt(v, v < 10 ? 1 : 0)} cm`;
+  el.innerHTML = tile('Schnee', depth >= 0.5 ? `${fmt(depth, depth < 10 ? 1 : 0)}<small> cm Schneehöhe</small>` : `<small>keine Schneedecke</small>`,
+    `<div class="tsub">${fresh >= 0.5 ? `Neuschnee in 24 h: <b>${cm(fresh)}</b>` : 'kein Neuschnee in den nächsten 24 h'}</div>`
+    + (mDepth != null && Math.abs(mDepth - depth) >= 0.5 ? `<div class="tsub muted">${dayStart(morning.getTime()) === dayStart(now) ? 'heute' : 'morgen'} früh ${mDepth >= 0.5 ? cm(mDepth) : 'schneefrei'}</div>` : '')
+    + `<div class="tsub muted">Modellwert für den Ort</div>`, `<span class="snowico">${I('snowflake')}</span>`);
+  el.hidden = false;
 }
 function renderNowSub() {
   const today = dayStart(Date.now()), d = insightFc?.rows.filter(r => dayStart(r.t - 1) === today) || [];
@@ -1395,6 +1411,10 @@ function initMap() {
   let satErr = 0;
   satLayer.on('tileerror', () => { if (++satErr === 4) toast(`Satellitenebene „${satLayerName()}“ nicht abrufbar – in den Einstellungen andere Ebene wählen.`, 6000); });
   satLayer.on('tileload', () => { satErr = 0; });
+  // DWD-Warnungen auf Gemeindeebene (Warngebiete zusammengefasst); Antippen zeigt die Warnungen an diesem Punkt
+  warnLayer = L.tileLayer.wms(DWD_WMS, { layers: DWD_WARN, format: 'image/png', transparent: true, version: '1.3.0', tileSize: 512, opacity: 0.7, zIndex: 15,
+    attribution: 'Warnungen: <a href="https://www.dwd.de/warnungen" target="_blank" rel="noopener">DWD</a>' });
+  map.on('click', (e) => { if (S.mapMode === 'warn') showWarnAt(e.latlng); });
   map.on('contextmenu', (e) => {
     const div = document.createElement('div'), b = document.createElement('button');
     div.innerHTML = `<div style="margin-bottom:.4rem">${fmt(e.latlng.lat, 4)}, ${fmt(e.latlng.lng, 4)}</div>`;
@@ -1487,14 +1507,30 @@ function windyUrl() {
   const q = new URLSearchParams({ lat: p.lat.toFixed(3), lon: p.lon.toFixed(3), detailLat: p.lat.toFixed(3), detailLon: p.lon.toFixed(3), zoom: '7', level: 'surface', overlay: 'wind', product: 'ecmwf', menu: '', message: 'true', marker: 'true', calendar: 'now', pressure: 'true', type: 'map', location: 'coordinates', detail: '', metricWind: 'km/h', metricTemp: '°C', radarRange: '-1' });
   return `https://embed.windy.com/embed2.html?${q}`;
 }
+const DWD_WARN = 'dwd:Warnungen_Gemeinden_vereinigt';
+let warnLayer;
+const SEV_DE = { Minor: 'Warnung', Moderate: 'markantes Wetter', Severe: 'Unwetter', Extreme: 'extremes Unwetter' };
+async function showWarnAt(ll) {
+  const d = 0.001, q = new URLSearchParams({ service: 'WMS', version: '1.3.0', request: 'GetFeatureInfo', layers: DWD_WARN, query_layers: DWD_WARN, styles: '', crs: 'EPSG:4326',
+    bbox: [ll.lat - d, ll.lng - d, ll.lat + d, ll.lng + d].map(v => v.toFixed(5)).join(','), width: '3', height: '3', i: '1', j: '1',
+    info_format: 'application/json', feature_count: '10', propertyName: 'EVENT,SEVERITY,HEADLINE,ONSET,EXPIRES,EC_AREA_COLOR' });
+  const pop = L.popup({ maxWidth: 280 }).setLatLng(ll).setContent('Lade Warnungen …').openOn(map);
+  try {
+    const j = await getJSON(`${DWD_WMS}?${q}`), list = (j.features || []).map(f => f.properties).sort((a, b) => new Date(a.ONSET) - new Date(b.ONSET));
+    const when = (s) => { const t = new Date(s).getTime(); return `${dayStart(t) === dayStart(Date.now()) ? '' : `${WD[new Date(t).getDay()]} `}${hhmm(t)}`; };
+    pop.setContent(list.length ? list.map(w => `<div class="wpop"><i style="background:rgb(${(w.EC_AREA_COLOR || '200 200 200').split(' ').join(',')})"></i><div><b>${esc(w.HEADLINE || w.EVENT)}</b>`
+      + `<div class="small">${esc(SEV_DE[w.SEVERITY] || '')} · ${when(w.ONSET)} – ${when(w.EXPIRES)}</div></div></div>`).join('') : 'Keine Warnung für diesen Ort.');
+  } catch (e) { pop.setContent(`Warnungen nicht abrufbar (${esc(e.message)}).`); }
+}
 function setMapMode(mode, persist = true) {
   S.mapMode = mode; if (persist) save();
-  const tabs = { radar: '#tabRadar', sat: '#tabSat', both: '#tabBoth', wind: '#tabWind' };
+  const tabs = { radar: '#tabRadar', sat: '#tabSat', both: '#tabBoth', wind: '#tabWind', warn: '#tabWarn' };
   Object.entries(tabs).forEach(([k, sel]) => $(sel).classList.toggle('active', k === mode));
   const wind = mode === 'wind', radar = mode === 'radar' || mode === 'both';
   $('#map').hidden = wind; $('#windy').hidden = !wind; $('#animBar').hidden = !radar;
   $('#radarLegend').style.display = radar ? '' : 'none';
-  $('#mapTitle').textContent = { radar: 'Regenradar', sat: 'Satellitenbild', both: 'Radar & Satellit', wind: 'Windströmung' }[mode];
+  $('#warnLegend').style.display = mode === 'warn' ? '' : 'none';
+  $('#mapTitle').textContent = { radar: 'Regenradar', sat: 'Satellitenbild', both: 'Radar & Satellit', wind: 'Windströmung', warn: 'Wetterwarnungen' }[mode];
   if (!radar) stopAnim();
   if (wind) {
     const box = $('#windy'), url = windyUrl();
@@ -1502,7 +1538,8 @@ function setMapMode(mode, persist = true) {
   } else if (map) {
     for (const l of anim.layers.values()) { if (radar) l.addTo(map); else map.removeLayer(l); }
     if (radar) showFrame(anim.idx);
-    if (mode !== 'radar') { satLayer.setParams({ layers: satLayerName() }, true); satLayer.addTo(map); } else map.removeLayer(satLayer);
+    if (mode === 'sat' || mode === 'both') { satLayer.setParams({ layers: satLayerName() }, true); satLayer.addTo(map); } else map.removeLayer(satLayer);
+    if (mode === 'warn') { warnLayer.setParams({ _t: Math.floor(Date.now() / (10 * MIN)) }, true); warnLayer.addTo(map); } else map.removeLayer(warnLayer);
     setTimeout(() => map.invalidateSize(), 50);
   }
   updateMapTime();
@@ -1572,11 +1609,15 @@ function initMapFull() {
 function updateMapTime() {
   const m = S.mapMode, parts = [];
   if (m === 'wind') parts.push('Windy.com · ECMWF-Modell');
+  if (m === 'warn') parts.push('DWD-Warnungen nach Gemeinden · Gebiet antippen für Details');
   if (m === 'radar' || m === 'both') parts.push('DWD-Radar, 10-Minuten-Schritte');
   if (m === 'sat' || m === 'both') parts.push(`Satellit ${isDayLayer() ? 'Echtfarben' : 'Infrarot'} (ca. 10–20 min Verzug)`);
   $('#mapTime').textContent = parts.join(' · ');
 }
-function refreshSat() { if (map && satLayer) satLayer.setParams({ _t: Math.floor(Date.now() / (5 * MIN)), layers: satLayerName() }); }
+function refreshSat() {
+  if (map && satLayer) satLayer.setParams({ _t: Math.floor(Date.now() / (5 * MIN)), layers: satLayerName() });
+  if (map && warnLayer && S.mapMode === 'warn') warnLayer.setParams({ _t: Math.floor(Date.now() / (10 * MIN)) });
+}
 function drawMarker() {
   if (!S.loc || !map) return;
   const ll = [S.loc.lat, S.loc.lon];
@@ -1977,7 +2018,7 @@ function init() {
   $('#btnStation').onclick = openStationDialog; $('#btnCloseStation').onclick = () => $('#dlgStation').close();
   $('#searchForm').onsubmit = (e) => { e.preventDefault(); doSearch(); };
   $('#tabRadar').onclick = () => setMapMode('radar'); $('#tabSat').onclick = () => setMapMode('sat');
-  $('#tabBoth').onclick = () => setMapMode('both'); $('#tabWind').onclick = () => setMapMode('wind');
+  $('#tabBoth').onclick = () => setMapMode('both'); $('#tabWind').onclick = () => setMapMode('wind'); $('#tabWarn').onclick = () => setMapMode('warn');
   initMapFull(); initDays(); initShare();
   $('#btnPlay').onclick = playAnim;
   $('#btnAnimNow').onclick = () => { stopAnim(); showFrame(anim.nowIdx); };
