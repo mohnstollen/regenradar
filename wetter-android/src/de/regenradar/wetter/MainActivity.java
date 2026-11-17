@@ -162,10 +162,23 @@ public class MainActivity extends Activity {
                 }).start();
                 return "null";
             }
+            case "frostTest": {   // Frost-/Glättemeldung sofort prüfen und senden; Ergebnis per window.__dailyTest(text)
+                new Thread(new Runnable() {
+                    @Override
+                    public void run() {
+                        String msg;
+                        try { FrostAlert.runLogged(getApplicationContext(), true); msg = "Frost-/Glättemeldung gesendet."; }
+                        catch (Exception e) { msg = "Frost-/Glättemeldung fehlgeschlagen: " + DailyForecast.reason(e); }
+                        final String js = "window.__dailyTest && window.__dailyTest(" + JSONObject.quote(msg) + ")";
+                        runOnUiThread(new Runnable() { @Override public void run() { web.evaluateJavascript(js, null); } });
+                    }
+                }).start();
+                return "null";
+            }
             case "dailyStatus": {
                 SharedPreferences p = Notifier.prefs(this);
                 JSONObject o = new JSONObject().put("exact", DailyAlarm.exactAllowed(this)).put("xiaomi", isXiaomi());
-                for (String k : new String[] { "dailyEve", "dailyMorn" })
+                for (String k : new String[] { "dailyEve", "dailyMorn", "frostNotify" })
                     o.put(k, new JSONObject().put("next", p.getLong(k + "Next", 0)).put("lastAt", p.getLong(k + "LastAt", 0)).put("last", p.getString(k + "Last", "")));
                 return o.toString();
             }
@@ -195,6 +208,8 @@ public class MainActivity extends Activity {
                     .putInt("stormRadius", o.optInt("stormRadius", 50))
                     .putBoolean("dailyEve", o.optBoolean("dailyEve"))
                     .putString("dailyEveTime", o.optString("dailyEveTime", "20:00"))
+                    .putBoolean("frostNotify", o.optBoolean("frostNotify"))
+                    .putString("frostTime", o.optString("frostTime", "20:00"))
                     .putBoolean("dailyMorn", o.optBoolean("dailyMorn"))
                     .putString("dailyMornTime", o.optString("dailyMornTime", "06:30"));
                 JSONObject dp = o.optJSONObject("dailyPlace");   // Ort der Tagesvorhersage (zuletzt per GPS oder Favorit)

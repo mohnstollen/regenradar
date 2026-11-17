@@ -11,7 +11,7 @@
  * Pollen:      DWD Pollenflug-Gefahrenindex, außerhalb DE Open-Meteo/CAMS
  */
 'use strict';
-const APP_VERSION = '3.22.0';
+const APP_VERSION = '3.22.1';
 const WIZARD_VERSION = '3.11';
 
 // ---------- Endpunkte ----------
@@ -95,7 +95,8 @@ const DEFAULTS = {
   pollen: POLLEN.map(p => p.k), pollenRegion: 'auto', pollenHideZero: false,
   showFeels: true, showDew: true, layout: null, layoutSeen: [], wizardFor: null, theme: 'system', scene: true, glass: 84,
   rainRadius: 10, rainMin: 'all', stormNotify: false, stormRadius: 50,
-  dailyEve: false, dailyEveTime: '20:00', dailyMorn: false, dailyMornTime: '06:30', dailyPlace: 'gps', gpsLoc: null
+  dailyEve: false, dailyEveTime: '20:00', dailyMorn: false, dailyMornTime: '06:30', dailyPlace: 'gps', gpsLoc: null,
+  frostNotify: false, frostTime: '20:00'
 };
 let S = (() => {
   try { const s = Object.assign({}, DEFAULTS, JSON.parse(localStorage.getItem(LS) || '{}')); s.favs = Array.isArray(s.favs) ? s.favs : []; return s; }
@@ -116,6 +117,7 @@ function syncNative() {
   if (NATIVE) native('sync', { lat: S.loc?.lat ?? null, lon: S.loc?.lon ?? null, name: S.loc?.name ?? '', notify: S.notify, warnNotify: S.warnNotify, theme: S.theme,
     rainRadius: S.rainRadius, rainMin: S.rainMin, stormNotify: S.stormNotify, stormRadius: S.stormRadius,
     dailyEve: S.dailyEve, dailyEveTime: S.dailyEveTime, dailyMorn: S.dailyMorn, dailyMornTime: S.dailyMornTime, dailyPlace: dailyPlace(),
+    frostNotify: S.frostNotify, frostTime: S.frostTime,
     // Widgets können einzeln auf „Mein Standort“ oder einen Favoriten eingestellt werden
     favs: S.favs.map(f => ({ id: String(f.id), name: f.name, lat: f.lat, lon: f.lon })), gpsLoc: S.gpsLoc });
 }
@@ -1856,7 +1858,7 @@ function initSettings() {
 
 // Benachrichtigungen: Einstellungen und Einrichtungsassistent teilen sich die Bedienelemente (data-key).
 // Umkreis, Stärke und Unwetter im Umkreis gibt es nur in der Android-App (Hintergrundprüfung).
-const NOTIFY_KEYS = ['notify', 'warnNotify', 'stormNotify', 'dailyEve', 'dailyMorn'];
+const NOTIFY_KEYS = ['notify', 'warnNotify', 'stormNotify', 'dailyEve', 'dailyMorn', 'frostNotify'];
 function initNotifyControls() {
   $('#wizNotify').appendChild($('#notifyBlock').cloneNode(true)).removeAttribute('id');
   document.querySelectorAll('.notify-block [data-key]').forEach(el => el.onchange = async () => {
@@ -1868,8 +1870,8 @@ function initNotifyControls() {
     save(); syncNotifyControls();
   });
   document.querySelectorAll('.notify-block [data-daily-test]').forEach(b => b.onclick = () => {
-    toast('Tagesvorhersage wird abgerufen …');
-    native('dailyTest', b.dataset.dailyTest === 'eve');
+    toast(b.dataset.dailyTest === 'frost' ? 'Frost und Glätte werden geprüft …' : 'Tagesvorhersage wird abgerufen …');
+    if (b.dataset.dailyTest === 'frost') native('frostTest'); else native('dailyTest', b.dataset.dailyTest === 'eve');
   });
   document.querySelectorAll('.notify-block [data-open]').forEach(b => b.onclick = () => native('openSettings', b.dataset.open));
   window.__dailyTest = (msg) => { toast(msg, 6000); syncNotifyControls(); };
@@ -1886,7 +1888,7 @@ function dailyStatusText() {
     if (s.lastAt) bits.push(`zuletzt ${whenTxt(s.lastAt)}: ${s.last}`);
     return `${label}: ${bits.join(' · ')}`;
   };
-  return [part('dailyEve', 'Abends'), part('dailyMorn', 'Morgens'), st.exact ? '' : 'Genaue Wecker sind nicht erlaubt – die Meldung kann sich verspäten.'].filter(Boolean).join('\n');
+  return [part('dailyEve', 'Abends'), part('dailyMorn', 'Morgens'), part('frostNotify', 'Frost/Glätte'), st.exact ? '' : 'Genaue Wecker sind nicht erlaubt – die Meldung kann sich verspäten.'].filter(Boolean).join('\n');
 }
 function syncNotifyControls() {
   document.querySelectorAll('.notify-block [data-key=dailyPlace]').forEach(sel => {
@@ -1898,7 +1900,7 @@ function syncNotifyControls() {
   document.querySelectorAll('.notify-block .native-only').forEach(el => { el.hidden = !NATIVE; });
   document.querySelectorAll('.notify-block .browser-only').forEach(el => { el.hidden = NATIVE; });
   document.querySelectorAll('.notify-block [data-show]').forEach(el => { el.hidden = !NATIVE || !el.dataset.show.split(' ').some(k => S[k]); });
-  if (NATIVE && (S.dailyEve || S.dailyMorn)) {
+  if (NATIVE && (S.dailyEve || S.dailyMorn || S.frostNotify)) {
     const txt = dailyStatusText(), xiaomi = !!native('dailyStatus')?.xiaomi;
     document.querySelectorAll('.notify-block .daily-status').forEach(el => { el.textContent = txt; });
     document.querySelectorAll('.notify-block .daily-xiaomi').forEach(el => { el.hidden = !xiaomi; });
