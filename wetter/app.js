@@ -11,7 +11,7 @@
  * Pollen:      DWD Pollenflug-Gefahrenindex, außerhalb DE Open-Meteo/CAMS
  */
 'use strict';
-const APP_VERSION = '3.22.1';
+const APP_VERSION = '3.23.0';
 const WIZARD_VERSION = '3.11';
 
 // ---------- Endpunkte ----------
@@ -619,6 +619,61 @@ function renderInsight() {
 // Luftqualität am Ort: Europäischer Luftqualitätsindex (EAQI) aus dem CAMS-Modell über Open-Meteo – Modellwerte, keine Messung
 const AQI_STEPS = [[20, 'gut', '#50c8a0'], [40, 'ausreichend', '#a0d050'], [60, 'mäßig', '#f0c020'], [80, 'schlecht', '#f07830'], [100, 'sehr schlecht', '#d02040'], [Infinity, 'extrem schlecht', '#801860']];
 const aqiStep = (v) => AQI_STEPS.findIndex(s => v <= s[0]);
+// Detailfenster: Verlauf der letzten 3 und nächsten 3 Tage, Schadstoffe mit WHO-Richtwerten (2021), Empfehlung
+const AQI_ADVICE = ['Gute Luft – ideal für Aktivitäten im Freien.', 'Ausreichende Luftqualität – Aktivitäten im Freien ohne Einschränkung.',
+  'Empfindliche Personen sollten lange oder anstrengende Aktivitäten im Freien eher verkürzen.', 'Anstrengende Aktivitäten im Freien reduzieren, besonders bei Asthma oder Herz-Kreislauf-Beschwerden.',
+  'Anstrengung im Freien meiden; empfindliche Personen bleiben besser drinnen.', 'Aktivitäten im Freien möglichst vermeiden.'];
+// key, Name, Teilindex, WHO-Richtwert in µg/m³, Mittelungszeit in Stunden
+const POLLUTANTS = [['pm2_5', 'Feinstaub PM2,5', 'european_aqi_pm2_5', 15, 24], ['pm10', 'Feinstaub PM10', 'european_aqi_pm10', 45, 24],
+  ['nitrogen_dioxide', 'Stickstoffdioxid NO₂', 'european_aqi_nitrogen_dioxide', 25, 24], ['ozone', 'Ozon O₃', 'european_aqi_ozone', 100, 8],
+  ['sulphur_dioxide', 'Schwefeldioxid SO₂', 'european_aqi_sulphur_dioxide', 40, 24], ['carbon_monoxide', 'Kohlenmonoxid CO', null, 4000, 24]];
+async function openAirDialog() {
+  if (!S.loc) return;
+  const dlg = $('#dlgAir'), body = $('#airBody');
+  $('#airPlace').textContent = S.loc.name; body.className = 'small muted'; body.textContent = 'Lade Luftqualität …';
+  if (!dlg.open) dlg.showModal();
+  try {
+    const vars = ['european_aqi', ...POLLUTANTS.flatMap(p => p[2] ? [p[0], p[2]] : [p[0]])];
+    const q = new URLSearchParams({ latitude: S.loc.lat.toFixed(4), longitude: S.loc.lon.toFixed(4), hourly: vars.join(','), current: vars.join(','), past_days: '3', forecast_days: '4', timezone: 'auto', timeformat: 'unixtime' });
+    const { data: d } = await fetchJSON(`${OM_AQ}?${q}`);
+    const c = d.current || {}, h = d.hourly || {}, t = (h.time || []).map(x => x * 1000), now = Date.now();
+    if (c.european_aqi == null) throw new Error('keine Daten');
+    const i = aqiStep(c.european_aqi), [, name, col] = AQI_STEPS[i];
+    const main = POLLUTANTS.filter(p => p[2] && c[p[2]] != null).sort((a, b) => c[b[2]] - c[a[2]])[0];
+    // Mittelwert der letzten n Stunden (WHO-Richtwerte gelten für 24- bzw. 8-Stunden-Mittel)
+    const mean = (k, n) => { const v = t.map((x, j) => [x, h[k]?.[j]]).filter(([x, y]) => x <= now && x > now - n * HOUR && y != null).map(([, y]) => y); return v.length ? v.reduce((a, b) => a + b, 0) / v.length : null; };
+    const rows = POLLUTANTS.filter(p => c[p[0]] != null).map(([k, label, , lim, n]) => {
+      const m = mean(k, n) ?? c[k], r = m / lim, co = k === 'carbon_monoxide';
+      const [cls, txt] = r <= 1 ? ['good', 'unter Richtwert'] : r <= 2 ? ['mid', 'über Richtwert'] : ['bad', 'deutlich darüber'];
+      const v = (x) => co ? `${fmt(x / 1000, 2)} mg/m³` : `${fmt(x, x < 10 ? 1 : 0)} µg/m³`;
+      return `<div class="prow"><div><b>${label}</b><div class="muted">WHO-Richtwert ${v(lim)} (${n}-h-Mittel)</div></div>`
+        + `<div class="pval"><b>${v(c[k])}</b><div class="muted">Ø ${n} h ${v(m)}</div><div class="${cls}">${txt}</div></div></div>`;
+    }).join('');
+    body.className = 'airdlg';
+    body.innerHTML = `<div class="airhead"><span class="big" style="color:${col}">${fmt(c.european_aqi, 0)}</span><div><b style="color:${col}">${name}</b>`
+      + `<div class="muted">Europäischer Luftqualitätsindex${main ? ` · Hauptschadstoff: ${main[1].replace(/^\S+ /, '')}` : ''}</div></div></div>`
+      + `<p>${AQI_ADVICE[i]}</p><h4>Verlauf</h4><div class="muted">letzte 3 und nächste 3 Tage</div>${airTrend(t, h.european_aqi || [], now)}`
+      + `<h4>Schadstoffe</h4>${rows}`
+      + `<p class="muted">Modellwerte aus dem Copernicus-Dienst CAMS (über Open-Meteo), keine Messung. Richtwerte: WHO-Leitlinien 2021.</p>`;
+  } catch (e) { body.className = 'small muted'; body.textContent = `Luftqualität nicht abrufbar (${e.message}).`; }
+}
+function airTrend(t, v, now) {
+  const pts = t.map((x, j) => [x, v[j]]).filter(([x, y]) => y != null && x >= now - 3 * 24 * HOUR && x <= now + 3 * 24 * HOUR);
+  if (pts.length < 2) return '';
+  const W = 400, HG = 150, L = 26, R = 6, TOP = 8, B = 20, ymax = Math.max(60, Math.ceil(Math.max(...pts.map(p => p[1])) / 20) * 20);
+  const x0 = pts[0][0], x1 = pts[pts.length - 1][0], X = (x) => L + (x - x0) / (x1 - x0) * (W - L - R), Y = (y) => TOP + (1 - Math.min(y, ymax) / ymax) * (HG - TOP - B);
+  let s = '';
+  for (const [lim, , c] of AQI_STEPS) { const lo = AQI_STEPS[AQI_STEPS.findIndex(q => q[0] === lim) - 1]?.[0] ?? 0; if (lo >= ymax) break; s += `<rect x="${L}" width="${W - L - R}" y="${Y(Math.min(lim, ymax))}" height="${Y(lo) - Y(Math.min(lim, ymax))}" fill="${c}" opacity=".12"/>`; }
+  for (let y = 20; y <= ymax; y += 20) s += `<text class="lbl" x="${L - 4}" y="${Y(y) + 3}" text-anchor="end">${y}</text>`;
+  for (let d = dayStart(x0 + 24 * HOUR); d < x1; d = addDays(d, 1)) s += `<line class="grid" x1="${X(d)}" x2="${X(d)}" y1="${TOP}" y2="${HG - B}"/><text class="lbl" x="${X(d) + 3}" y="${HG - 6}">${WD[new Date(d).getDay()]}</text>`;
+  const line = (list) => list.map(([x, y], k) => `${k ? 'L' : 'M'}${X(x).toFixed(1)} ${Y(y).toFixed(1)}`).join('');
+  const past = pts.filter(p => p[0] <= now), fut = pts.filter(p => p[0] >= (past[past.length - 1]?.[0] ?? now));
+  s += `<path class="aqline" d="${line(past)}"/><path class="aqline fut" d="${line(fut)}"/>`;
+  const cur = past[past.length - 1];
+  if (cur) s += `<line class="nowl" x1="${X(cur[0])}" x2="${X(cur[0])}" y1="${TOP}" y2="${HG - B}"/><circle class="aqdotc" cx="${X(cur[0])}" cy="${Y(cur[1])}" r="4.5"/>`;
+  const hi = Math.max(...pts.map(p => p[1])), lo = Math.min(...pts.map(p => p[1]));
+  return `<svg class="aqtrend" viewBox="0 0 ${W} ${HG}" role="img" aria-label="Verlauf des Luftqualitätsindex">${s}</svg><div class="muted">Höchstwert ${fmt(hi, 0)} · Tiefstwert ${fmt(lo, 0)} · gestrichelt: Vorhersage</div>`;
+}
 async function loadAir(lat, lon) {
   const q = new URLSearchParams({ latitude: lat.toFixed(4), longitude: lon.toFixed(4), current: 'european_aqi,pm2_5,pm10,nitrogen_dioxide,ozone', hourly: 'european_aqi', timezone: 'auto', timeformat: 'unixtime', forecast_days: '2' });
   const { data: d } = await fetchJSON(`${OM_AQ}?${q}`);
@@ -634,7 +689,10 @@ async function loadAir(lat, lon) {
   el.innerHTML = tile('Luftqualität', `${fmt(c.european_aqi, 0)} <small style="color:${col}">${name}</small>`,
     `<div class="aqbar"><b style="left:${Math.min(100, c.european_aqi).toFixed(1)}%;background:${col}"></b></div>`
     + `<div class="tsub muted">${worst > i ? `später bis <b>${AQI_STEPS[worst][1]}</b> · ` : ''}${parts.length ? `${parts.join(' · ')} µg/m³` : ''}</div>`);
-  el.title = 'Europäischer Luftqualitätsindex (0–20 gut … über 100 extrem schlecht) aus dem Copernicus-Modell CAMS über Open-Meteo – Modellwerte für den Ort, keine Messung';
+  el.innerHTML += `<span class="tmore">Details ›</span>`;
+  el.title = 'Antippen für Verlauf und Schadstoffe – Europäischer Luftqualitätsindex aus dem Copernicus-Modell CAMS (Modellwerte, keine Messung)';
+  el.setAttribute('role', 'button'); el.tabIndex = 0;
+  el.onclick = openAirDialog; el.onkeydown = (e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); openAirDialog(); } };
   el.hidden = false;
 }
 async function loadCurrent(lat, lon) {
@@ -2018,6 +2076,7 @@ function init() {
     syncNotifyControls(); $('#satFound').textContent = `Gefunden: Tag ${SAT.day}, Nacht ${SAT.night} (${SAT.source})`; $('#dlgSettings').showModal(); };
   $('#btnCloseSearch').onclick = () => $('#dlgSearch').close();
   $('#btnStation').onclick = openStationDialog; $('#btnCloseStation').onclick = () => $('#dlgStation').close();
+  $('#btnCloseAir').onclick = () => $('#dlgAir').close();
   $('#searchForm').onsubmit = (e) => { e.preventDefault(); doSearch(); };
   $('#tabRadar').onclick = () => setMapMode('radar'); $('#tabSat').onclick = () => setMapMode('sat');
   $('#tabBoth').onclick = () => setMapMode('both'); $('#tabWind').onclick = () => setMapMode('wind'); $('#tabWarn').onclick = () => setMapMode('warn');

@@ -1,4 +1,10 @@
-# Wetter-App (PWA) – Version 3.22.1
+# Wetter-App (PWA) – Version 3.23.0
+
+## Neu in 3.23
+- Luftqualität: Antippen der Kachel öffnet ein Detailfenster – Index mit Stufe, Hauptschadstoff und Empfehlung,
+  Verlauf der letzten 3 und nächsten 3 Tage (Vorhersage gestrichelt, Stufen farbig hinterlegt) und alle Schadstoffe
+  (PM2,5, PM10, NO₂, O₃, SO₂, CO) mit aktuellem Wert, 24- bzw. 8-Stunden-Mittel und Vergleich mit den
+  WHO-Richtwerten 2021. Daten: CAMS über Open-Meteo (Modellwerte).
 
 ## Neu in 3.22
 - 3.22.1: Android-App: Benachrichtigung am Abend bei Frost oder Glätte in der Nacht (Einstellungen →
