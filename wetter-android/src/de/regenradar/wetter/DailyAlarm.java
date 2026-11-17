@@ -23,6 +23,20 @@ public class DailyAlarm extends BroadcastReceiver {
     static void schedule(Context c) {
         scheduleOne(c, true);
         scheduleOne(c, false);
+        scheduleFrost(c);
+    }
+
+    /** Wecker für die Frost-/Glätte-Meldung am Abend (FrostAlert); Ort wie die Tagesvorhersage, sonst der Ort aus der App. */
+    private static void scheduleFrost(Context c) {
+        SharedPreferences p = Notifier.prefs(c);
+        PendingIntent pi = PendingIntent.getBroadcast(c, 12, new Intent(c, DailyAlarm.class).setAction(ACTION).putExtra("frost", true),
+            PendingIntent.FLAG_IMMUTABLE | PendingIntent.FLAG_UPDATE_CURRENT);
+        AlarmManager am = c.getSystemService(AlarmManager.class);
+        if (!p.getBoolean("frostNotify", false) || !(p.contains("dailyLat") || p.contains("lat"))) { am.cancel(pi); p.edit().remove("frostNotifyNext").apply(); return; }
+        long t = next(p.getString("frostTime", "20:00"), System.currentTimeMillis());
+        if (exactAllowed(c)) am.setExactAndAllowWhileIdle(AlarmManager.RTC_WAKEUP, t, pi);
+        else am.setAndAllowWhileIdle(AlarmManager.RTC_WAKEUP, t, pi);
+        p.edit().putLong("frostNotifyNext", t).apply();
     }
 
     private static void scheduleOne(Context c, boolean evening) {
@@ -37,6 +51,13 @@ public class DailyAlarm extends BroadcastReceiver {
         if (exactAllowed(c)) am.setExactAndAllowWhileIdle(AlarmManager.RTC_WAKEUP, t, pi);
         else am.setAndAllowWhileIdle(AlarmManager.RTC_WAKEUP, t, pi);
         p.edit().putLong(key + "Next", t).apply();   // für die Statusanzeige in den Einstellungen
+    }
+
+    /** Nach einem Fehler (meist kein Netz) einmalig in 20 Minuten erneut prüfen. */
+    private static void retryFrost(Context c) {
+        PendingIntent pi = PendingIntent.getBroadcast(c, 13, new Intent(c, DailyAlarm.class).setAction(ACTION).putExtra("frost", true).putExtra("retry", true),
+            PendingIntent.FLAG_IMMUTABLE | PendingIntent.FLAG_UPDATE_CURRENT);
+        c.getSystemService(AlarmManager.class).setAndAllowWhileIdle(AlarmManager.RTC_WAKEUP, System.currentTimeMillis() + 20 * 60000L, pi);
     }
 
     static boolean exactAllowed(Context c) {
@@ -57,8 +78,19 @@ public class DailyAlarm extends BroadcastReceiver {
     @Override
     public void onReceive(final Context c, Intent intent) {
         if (!ACTION.equals(intent.getAction())) return;
-        final boolean evening = intent.getBooleanExtra("evening", true);
+        final boolean evening = intent.getBooleanExtra("evening", true), frost = intent.getBooleanExtra("frost", false), retry = intent.getBooleanExtra("retry", false);
         final PendingResult done = goAsync();
+        if (frost) {
+            new Thread(new Runnable() {
+                @Override
+                public void run() {
+                    try { FrostAlert.runLogged(c, false); }
+                    catch (Exception e) { if (!retry) retryFrost(c); }   // z. B. kein Netz: einmal nach 20 Minuten erneut
+                    finally { scheduleFrost(c); done.finish(); }
+                }
+            }).start();
+            return;
+        }
         new Thread(new Runnable() {
             @Override
             public void run() {

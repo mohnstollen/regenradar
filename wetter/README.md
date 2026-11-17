@@ -1,4 +1,13 @@
-# Wetter-App (PWA) – Version 3.21.0
+# Wetter-App (PWA) – Version 3.22.1
+
+## Neu in 3.22
+- 3.22.1: Android-App: Benachrichtigung am Abend bei Frost oder Glätte in der Nacht (Einstellungen →
+  Benachrichtigungen, Standard 20 Uhr). Kommt nur, wenn bis 10 Uhr am nächsten Morgen Frost, Glätte (nasse Straßen bei
+  höchstens 0,5 °C) oder Schneeglätte zu erwarten ist; Ort wie bei der Tagesvorhersage. Mit Test-Knopf.
+- Karte: neuer Reiter „Warnungen“ – amtliche DWD-Warnungen nach Gemeinden, eingefärbt nach Stufe (Warnung, markant,
+  Unwetter, extrem). Antippen eines Gebiets zeigt die Warnungen dort mit Stufe und Gültigkeit.
+- Aktuelle Werte: Kachel „Schnee“ mit Schneehöhe, Neuschnee in den nächsten 24 Stunden und Schneehöhe am nächsten
+  Morgen (ICON-D2-RUC, Modellwert für den Ort). Erscheint nur, wenn Schnee liegt oder Neuschnee erwartet wird.
 
 ## Neu in 3.21
 - Hinweis-Zeile unter der aktuellen Temperatur: das Wichtigste bis Sonnenuntergang („HEUTE“) bzw. bis zum Morgen
