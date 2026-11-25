@@ -28,10 +28,14 @@ import org.json.JSONArray;
 import org.json.JSONException;
 import org.json.JSONObject;
 
+import java.io.ByteArrayInputStream;
+import java.io.ByteArrayOutputStream;
 import java.io.File;
 import java.io.FileOutputStream;
 import java.io.IOException;
 import java.io.InputStream;
+import java.net.HttpURLConnection;
+import java.net.URL;
 import java.util.HashMap;
 import java.util.Map;
 
@@ -298,6 +302,7 @@ public class MainActivity extends Activity {
         String path = u.getPath();
         if (path == null || path.equals("/") || path.isEmpty()) path = "/index.html";
         if (path.contains("..")) return notFound();
+        if (path.startsWith(MA_PATH)) return meteoAlarm(path.substring(MA_PATH.length()));
         try {
             InputStream in = getAssets().open("www" + path);
             Map<String, String> headers = new HashMap<>();
@@ -306,6 +311,35 @@ public class MainActivity extends Activity {
                 ? "utf-8" : null, 200, "OK", headers, in);
         } catch (IOException e) {
             return notFound();
+        }
+    }
+
+    // MeteoAlarm-Warnungen (Ausland) erlauben keinen Abruf aus fremden Webseiten (CORS). Die App holt den Länder-Feed
+    // deshalb selbst und liefert ihn unter der eigenen Adresse aus: /meteoalarm/<land>, z. B. /meteoalarm/czechia
+    private static final String MA_PATH = "/meteoalarm/";
+    private static final String MA_FEED = "https://feeds.meteoalarm.org/api/v1/warnings/feeds-";
+
+    private static WebResourceResponse meteoAlarm(String country) {
+        Map<String, String> headers = new HashMap<>();
+        headers.put("Cache-Control", "no-store");
+        if (!country.matches("[a-z-]{2,40}")) return notFound();
+        HttpURLConnection con = null;
+        try {
+            con = (HttpURLConnection) new URL(MA_FEED + country).openConnection();
+            con.setConnectTimeout(15000);
+            con.setReadTimeout(30000);
+            con.setRequestProperty("Accept", "application/json");
+            int code = con.getResponseCode();
+            if (code != 200) return new WebResourceResponse("text/plain", "utf-8", code == 404 ? 404 : 502, code == 404 ? "Not Found" : "Bad Gateway", headers, null);
+            InputStream in = con.getInputStream();
+            ByteArrayOutputStream out = new ByteArrayOutputStream();
+            byte[] buf = new byte[16384];
+            for (int r; (r = in.read(buf)) > 0; ) out.write(buf, 0, r);
+            return new WebResourceResponse("application/json", "utf-8", 200, "OK", headers, new ByteArrayInputStream(out.toByteArray()));
+        } catch (IOException e) {
+            return new WebResourceResponse("text/plain", "utf-8", 504, "Gateway Timeout", headers, null);
+        } finally {
+            if (con != null) con.disconnect();
         }
     }
 

@@ -1,4 +1,15 @@
-# Wetter-App (PWA) – Version 3.23.0
+# Wetter-App (PWA) – Version 3.24.0
+
+## Neu in 3.24
+- Wetterwarnungen im Ausland: Liegt der Ort außerhalb Deutschlands, zeigt der Abschnitt „Wetterwarnungen“ die amtlichen
+  Warnungen des jeweiligen Landes über MeteoAlarm (z. B. ČHMÚ in Tschechien, GeoSphere in Österreich, SHMÚ in der Slowakei)
+  – mit Stufe (gelb, orange, rot), Art („Orange Warnung: Schnee und Glätte“), Gültigkeit, Region und beim Antippen dem
+  Originaltext des Wetterdienstes (meist englisch) samt Verhaltenshinweisen. Neue Warnungen lösen wie DWD-Warnungen eine
+  Benachrichtigung aus, solange die App offen ist.
+- Die Zuordnung Ort → Warngebiet geschieht in der App anhand vereinfachter Gebietsumrisse (`warngebiete/`, erzeugt von
+  `../tools/warngebiete.py`): MeteoAlarm-Gebiete, NUTS-Regionen und für Tschechien die ORP-Bezirke (über die Gemeinden).
+- Nur in der Android-App: MeteoAlarm erlaubt keinen Abruf direkt aus dem Browser (CORS); die App holt den Feed selbst.
+  Die Hintergrundprüfung bei geschlossener App und die Warnkarte zeigen weiterhin nur DWD-Warnungen.
 
 ## Neu in 3.23
 - Luftqualität: Antippen der Kachel öffnet ein Detailfenster – Index mit Stufe, Hauptschadstoff und Empfehlung,

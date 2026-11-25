@@ -44,6 +44,10 @@ eingebetteten Seiten wie Windy.
   im Umkreis von 25–100 km aus dem DWD-Geodienst (WFS `dwd:Warnungen_Landkreise`), mit Entfernung und Richtung,
   z. B. „Landkreis Forchheim, 15 km nördlich, bis 20:00 Uhr“. Ist die Warnung nicht mehr aktiv, wird dieselbe
   Benachrichtigung durch „Aufgehoben: …“ ersetzt. Das eigene Gebiet meldet bereits die Ortswarnung.
+- **Warnungen im Ausland** (MeteoAlarm): Der Feed `feeds.meteoalarm.org` sendet keine CORS-Kopfzeilen. `MainActivity`
+  liefert ihn deshalb unter `https://appassets.androidplatform.net/meteoalarm/<land>` aus (nur Ländernamen aus
+  Kleinbuchstaben und Bindestrichen, z. B. `czechia`). `app.js` ordnet die Warnungen dem Ort zu (`wetter/warngebiete/`).
+  Nur bei geöffneter App, nicht in `CheckService`.
 - Die Web-App meldet in der Android-App keinen Regen mehr selbst; das übernimmt die App mit den Optionen oben.
 - **Tagesvorhersage** (`DailyForecast`, `DailyAlarm`):
   - Abends für morgen und/oder morgens für heute zur gewählten Uhrzeit (Standard 20:00 bzw. 6:30 Uhr).
