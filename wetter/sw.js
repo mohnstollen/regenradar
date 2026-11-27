@@ -2,9 +2,9 @@
  * App-Dateien + Leaflet (unpkg): zuerst Netz, sonst Cache (offline lauffähig)
  * Wetter- und Pollendaten: zuerst Netz, offline letzte Antwort
  *   x-sw-time  = Zeitpunkt des ursprünglichen Abrufs, x-sw-cache = Antwort aus dem Offline-Speicher
- * Karten, Radar, Satellit, Windy: nur Netz
+ * Karten, Radar, Satellit, Windy, MeteoAlarm-Warnungen: nur Netz
  */
-const VERSION = 'wetter-v3.23.0';
+const VERSION = 'wetter-v3.25.0';
 const SHELL = ['./', './index.html', './style.css', './app.js', './icons.js', './scene.js', './manifest.webmanifest',
   'https://unpkg.com/leaflet@1.9.4/dist/leaflet.js', 'https://unpkg.com/leaflet@1.9.4/dist/leaflet.css',
   'https://unpkg.com/leaflet@1.9.4/dist/images/marker-icon.png', 'https://unpkg.com/leaflet@1.9.4/dist/images/marker-icon-2x.png',
@@ -26,6 +26,7 @@ async function withHeaders(res, extra) {
 self.addEventListener('fetch', e => {
   const req = e.request; if (req.method !== 'GET') return;
   const u = new URL(req.url);
+  if (u.origin === location.origin && u.pathname.startsWith('/meteoalarm/')) return;   // Warnungen über die Android-App: nur Netz
   if (u.origin === location.origin || u.hostname === 'unpkg.com') {
     e.respondWith(fetch(req).then(r => { if (r.ok) { const c = r.clone(); caches.open(VERSION).then(x => x.put(req, c)); } return r; })
       .catch(() => caches.match(req, { ignoreSearch: true }).then(r => r || (u.origin === location.origin ? caches.match('./index.html') : Response.error()))));

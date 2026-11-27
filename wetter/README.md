@@ -1,4 +1,22 @@
-# Wetter-App (PWA) – Version 3.23.0
+# Wetter-App (PWA) – Version 3.25.0
+
+## Neu in 3.25
+- Karte: neuer Reiter „Schnee“ – Schneehöhe flächig für Europa, eingefärbt in Stufen (1, 5, 10, 20, 50, 100, 200 cm).
+  In Mitteleuropa (Deutschland, Alpen, Tschechien, Benelux) aus DWD ICON-D2 (2,2 km), sonst aus ICON-EU (6,5 km); Analyse
+  des jeweils neuesten Laufs, alle 3 Stunden neu. Antippen eines Ortes zeigt die Schneehöhe in cm und die Modellhöhe.
+- Die Kartenbilder erzeugt die GitHub Action „Schneekarte“ (`../tools/schneekarte.py`, Daten von opendata.dwd.de) und legt
+  sie auf den Branch `schneekarte`; die App lädt sie von dort (raw.githubusercontent.com).
+
+## Neu in 3.24
+- Wetterwarnungen im Ausland: Liegt der Ort außerhalb Deutschlands, zeigt der Abschnitt „Wetterwarnungen“ die amtlichen
+  Warnungen des jeweiligen Landes über MeteoAlarm (z. B. ČHMÚ in Tschechien, GeoSphere in Österreich, SHMÚ in der Slowakei)
+  – mit Stufe (gelb, orange, rot), Art („Orange Warnung: Schnee und Glätte“), Gültigkeit, Region und beim Antippen dem
+  Originaltext des Wetterdienstes (meist englisch) samt Verhaltenshinweisen. Neue Warnungen lösen wie DWD-Warnungen eine
+  Benachrichtigung aus, solange die App offen ist.
+- Die Zuordnung Ort → Warngebiet geschieht in der App anhand vereinfachter Gebietsumrisse (`warngebiete/`, erzeugt von
+  `../tools/warngebiete.py`): MeteoAlarm-Gebiete, NUTS-Regionen und für Tschechien die ORP-Bezirke (über die Gemeinden).
+- Nur in der Android-App: MeteoAlarm erlaubt keinen Abruf direkt aus dem Browser (CORS); die App holt den Feed selbst.
+  Die Hintergrundprüfung bei geschlossener App und die Warnkarte zeigen weiterhin nur DWD-Warnungen.
 
 ## Neu in 3.23
 - Luftqualität: Antippen der Kachel öffnet ein Detailfenster – Index mit Stufe, Hauptschadstoff und Empfehlung,

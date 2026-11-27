@@ -1,0 +1,45 @@
+# Schneekarte für die Wetter-App: Schneehöhe aus DWD ICON-D2/ICON-EU als Kartenbilder, alle 3 Stunden neu.
+# Ergebnis liegt auf dem Branch „schneekarte“ (nur der jeweils letzte Stand, ohne Verlauf):
+#   https://raw.githubusercontent.com/mohnstollen/regenradar/schneekarte/schnee.json
+name: Schneekarte
+
+on:
+  schedule:
+    - cron: '23 1-23/3 * * *'   # ICON-D2 rechnet alle 3 h; die Daten liegen etwa 1–2 h später vor
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: schneekarte
+  cancel-in-progress: false
+
+jobs:
+  karte:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          sparse-checkout: tools
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Karte erzeugen
+        run: |
+          pip install --quiet eccodes numpy pillow
+          python tools/schneekarte.py out
+
+      - name: Auf Branch „schneekarte“ ablegen
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          cd out
+          git init -q -b schneekarte
+          git add .
+          git -c user.name='github-actions[bot]' -c user.email='41898282+github-actions[bot]@users.noreply.github.com' \
+            commit -q -m "Schneekarte $(date -u +%Y-%m-%dT%H:%MZ)"
+          git push -q -f "https://x-access-token:${GH_TOKEN}@github.com/${GITHUB_REPOSITORY}.git" schneekarte
