@@ -1,10 +1,20 @@
 #!/usr/bin/env bash
 # Baut aus der PWA in ../wetter eine signierte APK – ohne Gradle, nur mit den Android-Build-Tools.
-#   Ubuntu/Debian: apt install android-sdk-build-tools dalvik-exchange apksigner zipalign
+#   Ubuntu: apt install android-sdk-build-tools dalvik-exchange apksigner zipalign default-jdk-headless
+#   Debian 13 und andere (ohne dalvik-exchange): Googles Build-Tools entpacken – aapt2, d8, zipalign, apksigner –
+#     wget https://dl.google.com/android/repository/build-tools_r36.1_linux.zip && unzip build-tools_r36.1_linux.zip -d ~/android-build-tools
+#     Das Skript sucht sie in $ANDROID_BUILD_TOOLS (Standard ~/android-build-tools/android-16). Dazu: apt install default-jdk-headless unzip
 #   Als Android-API 34 (Ressourcen und Java) dient Robolectrics android-all – wird einmalig von Maven Central geladen (~140 MB).
 #   Signierschlüssel: $KEYSTORE (Standard ~/.android/wetter.jks, wird bei Bedarf erzeugt), Passwort $KEYSTORE_PASS
 set -euo pipefail
 cd "$(dirname "$0")"
+
+ANDROID_BUILD_TOOLS=${ANDROID_BUILD_TOOLS:-$HOME/android-build-tools/android-16}
+[ -d "$ANDROID_BUILD_TOOLS" ] && export PATH="$ANDROID_BUILD_TOOLS:$PATH"
+for t in aapt2 javac zipalign apksigner keytool; do
+  command -v "$t" > /dev/null || { echo "Fehlt: $t – siehe Kopf von build.sh" >&2; exit 1; }
+done
+command -v dalvik-exchange > /dev/null || command -v d8 > /dev/null || { echo "Fehlt: dalvik-exchange oder d8 – siehe Kopf von build.sh" >&2; exit 1; }
 
 ANDROID_ALL_VERSION=14-robolectric-10818077
 ANDROID_ALL_SHA1=94b1490a891e9be559aa35c87cd8a0c163f32d83
@@ -43,7 +53,14 @@ aapt2 link -I "$ANDROID_ALL" --manifest AndroidManifest.xml --version-code "$VER
 
 # Java -> Dex (android-all nur zum Kompilieren, nicht in der APK)
 javac --release 8 -Xlint:-options -encoding UTF-8 -cp "$ANDROID_ALL" -d "$OUT/classes" $(find src "$OUT/gen" -name '*.java')
-dalvik-exchange --dex --min-sdk-version=24 --output="$OUT/classes.dex" "$OUT/classes"
+if command -v dalvik-exchange > /dev/null; then
+  dalvik-exchange --dex --min-sdk-version=24 --output="$OUT/classes.dex" "$OUT/classes"
+else
+  (cd "$OUT/classes" && jar cf ../classes.jar .)
+  # d8 ab Build-Tools 36 (ältere scheitern an den anonymen Klassen); Java-Bibliothek für die Grundklassen
+  JDK=$(dirname "$(dirname "$(readlink -f "$(command -v javac)")")")
+  d8 --release --min-api 24 --lib "$JDK" --lib "$ANDROID_ALL" --output "$OUT" "$OUT/classes.jar"
+fi
 (cd "$OUT" && zip -q unsigned.apk classes.dex)
 
 # Ausrichten und signieren

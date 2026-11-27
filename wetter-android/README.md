@@ -111,8 +111,21 @@ Die Wettersymbole der Widgets (`res/drawable-nodpi/wx_*.png`) entstehen aus `../
 
 ## Bauen
 
+Ubuntu:
+
 ```sh
-sudo apt install android-sdk-build-tools dalvik-exchange apksigner zipalign
+sudo apt install android-sdk-build-tools dalvik-exchange apksigner zipalign default-jdk-headless
+./build.sh
+```
+
+Debian 13 und andere Systeme ohne `dalvik-exchange`: Googles Build-Tools (enthalten `aapt2`, `d8`, `zipalign`,
+`apksigner`) nach `~/android-build-tools` entpacken, das Skript findet sie dort (anderer Ort: `$ANDROID_BUILD_TOOLS`).
+Ältere Build-Tools als 36 gehen nicht, deren `d8` scheitert an den anonymen Klassen.
+
+```sh
+sudo apt install default-jdk-headless unzip wget
+wget https://dl.google.com/android/repository/build-tools_r36.1_linux.zip
+unzip build-tools_r36.1_linux.zip -d ~/android-build-tools
 ./build.sh
 ```
 
