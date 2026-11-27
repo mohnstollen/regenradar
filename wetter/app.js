@@ -7,11 +7,11 @@
  * Verlauf:     12 h … 10 Tage; Modelle DWD (ICON-D2, ICON-EU, ICON, MOSMIX) und ECMWF (IFS, AIFS)
  *              Temperatur, gefühlte Temperatur, Taupunkt, Niederschlag, Regenwahrscheinlichkeit, Wind, Sonne
  * Tage:        10-Tage-Übersicht aus DWD MOSMIX
- * Karte:       DWD-Radar als Animation (−1 h bis +2 h), EUMETSAT-Satellit, Windy
+ * Karte:       DWD-Radar als Animation (−1 h bis +2 h), EUMETSAT-Satellit, Windy, DWD-Warnungen, Schneehöhe (ICON)
  * Pollen:      DWD Pollenflug-Gefahrenindex, außerhalb DE Open-Meteo/CAMS
  */
 'use strict';
-const APP_VERSION = '3.24.0';
+const APP_VERSION = '3.25.0';
 const WIZARD_VERSION = '3.11';
 
 // ---------- Endpunkte ----------
@@ -39,7 +39,7 @@ const SECTIONS = [
   { id: 'daytext', name: 'Textprognose', sub: 'Tagesvorhersage in Worten, im Winter Glätte', icon: 'text' },
   { id: 'chart', name: 'Vorhersagediagramm', sub: '12 h bis 10 Tage, Modell wählbar', icon: 'chart' },
   { id: 'days', name: '10-Tage-Übersicht', sub: 'Tageswerte als Liste', icon: 'calendar' },
-  { id: 'map', name: 'Karte', sub: 'Radar-Animation, Satellit, Wind', icon: 'map' },
+  { id: 'map', name: 'Karte', sub: 'Radar-Animation, Satellit, Wind, Warnungen, Schnee', icon: 'map' },
   { id: 'pollen', name: 'Pollenflug', sub: 'DWD-Gefahrenindex', icon: 'flower' }
 ];
 const NEW_IN_VERSION = ['nowcast', 'days'];
@@ -1569,7 +1569,7 @@ function initMap() {
   // DWD-Warnungen auf Gemeindeebene (Warngebiete zusammengefasst); Antippen zeigt die Warnungen an diesem Punkt
   warnLayer = L.tileLayer.wms(DWD_WMS, { layers: DWD_WARN, format: 'image/png', transparent: true, version: '1.3.0', tileSize: 512, opacity: 0.7, zIndex: 15,
     attribution: 'Warnungen: <a href="https://www.dwd.de/warnungen" target="_blank" rel="noopener">DWD</a>' });
-  map.on('click', (e) => { if (S.mapMode === 'warn') showWarnAt(e.latlng); });
+  map.on('click', (e) => { if (S.mapMode === 'warn') showWarnAt(e.latlng); else if (S.mapMode === 'snow') showSnowAt(e.latlng); });
   map.on('contextmenu', (e) => {
     const div = document.createElement('div'), b = document.createElement('button');
     div.innerHTML = `<div style="margin-bottom:.4rem">${fmt(e.latlng.lat, 4)}, ${fmt(e.latlng.lng, 4)}</div>`;
@@ -1677,15 +1677,54 @@ async function showWarnAt(ll) {
       + `<div class="small">${esc(SEV_DE[w.SEVERITY] || '')} · ${when(w.ONSET)} – ${when(w.EXPIRES)}</div></div></div>`).join('') : 'Keine Warnung für diesen Ort.');
   } catch (e) { pop.setContent(`Warnungen nicht abrufbar (${esc(e.message)}).`); }
 }
+// ---------- Schneekarte ----------
+// Schneehöhe aus DWD ICON-D2 (Mitteleuropa, 2,2 km) und ICON-EU (Europa) als Bilder in Web-Mercator, alle 3 h neu von der
+// GitHub Action „Schneekarte“ (tools/schneekarte.py) auf den Branch „schneekarte“ gelegt. Fehlt er, eine mitgelieferte Kopie.
+const SNOW_SRC = ['https://raw.githubusercontent.com/mohnstollen/regenradar/schneekarte/', './schneekarte/'];
+let snowGroup = null, snowMeta = null, snowLoaded = 0;
+async function loadSnowLayers() {
+  if (snowGroup && Date.now() - snowLoaded < 30 * MIN) return;
+  let meta = null, base = null, err = null;
+  for (const b of SNOW_SRC) {
+    try { meta = await getJSON(`${b}schnee.json?_t=${Math.floor(Date.now() / (15 * MIN))}`); base = b; break; } catch (e) { err = e; }
+  }
+  if (!meta) throw err || new Error('Schneekarte nicht verfügbar');
+  if (snowGroup && snowMeta?.made === meta.made) { snowLoaded = Date.now(); return; }
+  const g = L.layerGroup(meta.layers.map(l => L.imageOverlay(`${base}${l.image}?v=${encodeURIComponent(l.run)}`, l.bounds,
+    { opacity: 0.8, zIndex: 12, className: 'snowimg', attribution: 'Schneehöhe: <a href="https://www.dwd.de/" target="_blank" rel="noopener">DWD</a> ICON (Modell)' })));
+  if (snowGroup && map.hasLayer(snowGroup)) { map.removeLayer(snowGroup); g.addTo(map); }
+  snowGroup = g; snowMeta = meta; snowLoaded = Date.now();
+  renderSnowLegend(); updateMapTime();
+}
+function renderSnowLegend() {
+  const m = snowMeta; if (!m) return;
+  $('#snowLegend').innerHTML = m.steps.map((v, i) => `<i style="background:${m.colors[i]}"></i>${i === m.steps.length - 1 ? `über ${v}` : v}`).join('') + ' cm';
+}
+async function showSnowAt(ll) {
+  const pop = L.popup({ maxWidth: 260 }).setLatLng(ll).setContent('Lade Schneehöhe …').openOn(map);
+  for (const [model, name] of [['dwd_icon_d2_native', 'ICON-D2'], ['dwd_icon_eu_native', 'ICON-EU']]) {
+    try {
+      const r = await omHourly(ll.lat, ll.lng, model, ['snow_depth'], 1), col = r.col('snow_depth'), now = Date.now() / 1000;
+      let i = r.time.findIndex(t => t > now) - 1; if (i < 0) i = r.time.length - 1;
+      const sd = col[i]; if (sd == null) continue;
+      const cm = sd * 100, elev = r.elevation != null ? ` · Modellhöhe ${fmt(r.elevation, 0)} m` : '';
+      pop.setContent(`<b>${cm < 0.5 ? 'Kein Schnee' : `Schneehöhe ${cm < 10 ? fmt(cm, 1) : fmt(cm, 0)} cm`}</b>`
+        + `<div class="small">DWD ${name}, Modellwert${elev}</div>`);
+      return;
+    } catch (e) { pop.setContent(`Schneehöhe nicht abrufbar (${esc(e.message)}).`); return; }
+  }
+  pop.setContent('Für diesen Ort liefert das Modell keine Schneehöhe.');
+}
 function setMapMode(mode, persist = true) {
   S.mapMode = mode; if (persist) save();
-  const tabs = { radar: '#tabRadar', sat: '#tabSat', both: '#tabBoth', wind: '#tabWind', warn: '#tabWarn' };
+  const tabs = { radar: '#tabRadar', sat: '#tabSat', both: '#tabBoth', wind: '#tabWind', warn: '#tabWarn', snow: '#tabSnow' };
   Object.entries(tabs).forEach(([k, sel]) => $(sel).classList.toggle('active', k === mode));
   const wind = mode === 'wind', radar = mode === 'radar' || mode === 'both';
   $('#map').hidden = wind; $('#windy').hidden = !wind; $('#animBar').hidden = !radar;
   $('#radarLegend').style.display = radar ? '' : 'none';
   $('#warnLegend').style.display = mode === 'warn' ? '' : 'none';
-  $('#mapTitle').textContent = { radar: 'Regenradar', sat: 'Satellitenbild', both: 'Radar & Satellit', wind: 'Windströmung', warn: 'Wetterwarnungen' }[mode];
+  $('#snowLegend').style.display = mode === 'snow' ? '' : 'none';
+  $('#mapTitle').textContent = { radar: 'Regenradar', sat: 'Satellitenbild', both: 'Radar & Satellit', wind: 'Windströmung', warn: 'Wetterwarnungen', snow: 'Schneehöhe' }[mode];
   if (!radar) stopAnim();
   if (wind) {
     const box = $('#windy'), url = windyUrl();
@@ -1695,6 +1734,9 @@ function setMapMode(mode, persist = true) {
     if (radar) showFrame(anim.idx);
     if (mode === 'sat' || mode === 'both') { satLayer.setParams({ layers: satLayerName() }, true); satLayer.addTo(map); } else map.removeLayer(satLayer);
     if (mode === 'warn') { warnLayer.setParams({ _t: Math.floor(Date.now() / (10 * MIN)) }, true); warnLayer.addTo(map); } else map.removeLayer(warnLayer);
+    if (mode === 'snow') loadSnowLayers().then(() => { if (S.mapMode === 'snow') snowGroup.addTo(map); })
+      .catch(e => { toast(`Schneekarte nicht abrufbar (${e.message}).`, 5000); });
+    else if (snowGroup) map.removeLayer(snowGroup);
     setTimeout(() => map.invalidateSize(), 50);
   }
   updateMapTime();
@@ -1765,6 +1807,10 @@ function updateMapTime() {
   const m = S.mapMode, parts = [];
   if (m === 'wind') parts.push('Windy.com · ECMWF-Modell');
   if (m === 'warn') parts.push('DWD-Warnungen nach Gemeinden · Gebiet antippen für Details');
+  if (m === 'snow') {
+    const r = snowMeta?.layers?.[snowMeta.layers.length - 1]?.run;
+    parts.push(`DWD ICON-D2/ICON-EU${r ? `, Stand ${new Date(r).toLocaleString('de-DE', { weekday: 'short', hour: '2-digit', minute: '2-digit' })} Uhr` : ''} · Ort antippen für Wert`);
+  }
   if (m === 'radar' || m === 'both') parts.push('DWD-Radar, 10-Minuten-Schritte');
   if (m === 'sat' || m === 'both') parts.push(`Satellit ${isDayLayer() ? 'Echtfarben' : 'Infrarot'} (ca. 10–20 min Verzug)`);
   $('#mapTime').textContent = parts.join(' · ');
@@ -1772,6 +1818,7 @@ function updateMapTime() {
 function refreshSat() {
   if (map && satLayer) satLayer.setParams({ _t: Math.floor(Date.now() / (5 * MIN)), layers: satLayerName() });
   if (map && warnLayer && S.mapMode === 'warn') warnLayer.setParams({ _t: Math.floor(Date.now() / (10 * MIN)) });
+  if (map && S.mapMode === 'snow') loadSnowLayers().then(() => { if (S.mapMode === 'snow' && !map.hasLayer(snowGroup)) snowGroup.addTo(map); }).catch(() => { });
 }
 function drawMarker() {
   if (!S.loc || !map) return;
@@ -2174,7 +2221,7 @@ function init() {
   $('#btnCloseAir').onclick = () => $('#dlgAir').close();
   $('#searchForm').onsubmit = (e) => { e.preventDefault(); doSearch(); };
   $('#tabRadar').onclick = () => setMapMode('radar'); $('#tabSat').onclick = () => setMapMode('sat');
-  $('#tabBoth').onclick = () => setMapMode('both'); $('#tabWind').onclick = () => setMapMode('wind'); $('#tabWarn').onclick = () => setMapMode('warn');
+  $('#tabBoth').onclick = () => setMapMode('both'); $('#tabWind').onclick = () => setMapMode('wind'); $('#tabWarn').onclick = () => setMapMode('warn'); $('#tabSnow').onclick = () => setMapMode('snow');
   initMapFull(); initDays(); initShare();
   $('#btnPlay').onclick = playAnim;
   $('#btnAnimNow').onclick = () => { stopAnim(); showFrame(anim.nowIdx); };

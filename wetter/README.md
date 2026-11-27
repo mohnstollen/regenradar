@@ -1,4 +1,11 @@
-# Wetter-App (PWA) – Version 3.24.0
+# Wetter-App (PWA) – Version 3.25.0
+
+## Neu in 3.25
+- Karte: neuer Reiter „Schnee“ – Schneehöhe flächig für Europa, eingefärbt in Stufen (1, 5, 10, 20, 50, 100, 200 cm).
+  In Mitteleuropa (Deutschland, Alpen, Tschechien, Benelux) aus DWD ICON-D2 (2,2 km), sonst aus ICON-EU (6,5 km); Analyse
+  des jeweils neuesten Laufs, alle 3 Stunden neu. Antippen eines Ortes zeigt die Schneehöhe in cm und die Modellhöhe.
+- Die Kartenbilder erzeugt die GitHub Action „Schneekarte“ (`../tools/schneekarte.py`, Daten von opendata.dwd.de) und legt
+  sie auf den Branch `schneekarte`; die App lädt sie von dort (raw.githubusercontent.com).
 
 ## Neu in 3.24
 - Wetterwarnungen im Ausland: Liegt der Ort außerhalb Deutschlands, zeigt der Abschnitt „Wetterwarnungen“ die amtlichen
