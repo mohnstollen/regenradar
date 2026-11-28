@@ -87,7 +87,10 @@
         <h3 id="chartTitle">Die nächsten 12 Stunden</h3>
         <select id="modelSelect" aria-label="Wettermodell"></select>
       </div>
-      <div class="seg range" id="rangeSeg" role="tablist" aria-label="Zeitraum"></div>
+      <div class="rangebox">
+        <div class="rangerow"><input type="range" id="rangeSlider" min="0" max="0" step="1" value="0" aria-label="Zeitraum"><b id="rangeVal" class="rangeval"></b></div>
+        <div class="rangeband small" id="rangeBand" aria-hidden="true"></div>
+      </div>
       <div class="small muted model-info" id="modelInfo"></div>
       <div class="clegend small" id="chartLegend"></div>
       <div id="chart" class="chart" aria-label="Temperaturverlauf, Niederschlag, Regenwahrscheinlichkeit, Wind und Sonnenschein"></div>

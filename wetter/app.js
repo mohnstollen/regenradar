@@ -4,14 +4,14 @@
  * Aktuell:     Bright Sky /current_weather – nächste oder gewählte DWD-Station
  * Nowcast:     Bright Sky /radar (DWD RV inkl. 2-h-Vorhersage) – Regenhinweis + 5-Minuten-Diagramm
  * Text:        Tagesprognose in Worten + Winterhinweise (Schneefallgrenze, Glätte) aus DWD ICON-D2
- * Verlauf:     12 h … 10 Tage; Modelle DWD (ICON-D2, ICON-EU, ICON, MOSMIX) und ECMWF (IFS, AIFS)
+ * Verlauf:     6 h … 15 Tage per Schieberegler, Modell automatisch oder fest; Modelle DWD (ICON-D2, ICON-EU, ICON, MOSMIX) und ECMWF (IFS, AIFS)
  *              Temperatur, gefühlte Temperatur, Taupunkt, Niederschlag, Regenwahrscheinlichkeit, Wind, Sonne
  * Tage:        10-Tage-Übersicht aus DWD MOSMIX
  * Karte:       DWD-Radar als Animation (−1 h bis +2 h), EUMETSAT-Satellit, Windy, DWD-Warnungen, Schneehöhe (ICON)
  * Pollen:      DWD Pollenflug-Gefahrenindex, außerhalb DE Open-Meteo/CAMS
  */
 'use strict';
-const APP_VERSION = '3.25.0';
+const APP_VERSION = '3.26.0';
 const WIZARD_VERSION = '3.11';
 
 // ---------- Endpunkte ----------
@@ -37,22 +37,18 @@ const SECTIONS = [
   { id: 'now', name: 'Aktuelle Werte', sub: 'Station, Sonne, Mond, Luftqualität', icon: 'thermo' },
   { id: 'nowcast', name: 'Regen in 2 Stunden', sub: '5-Minuten-Vorhersage aus dem DWD-Radar', icon: 'bars' },
   { id: 'daytext', name: 'Textprognose', sub: 'Tagesvorhersage in Worten, im Winter Glätte', icon: 'text' },
-  { id: 'chart', name: 'Vorhersagediagramm', sub: '12 h bis 10 Tage, Modell wählbar', icon: 'chart' },
+  { id: 'chart', name: 'Vorhersagediagramm', sub: '6 h bis 15 Tage, Modell passt sich an', icon: 'chart' },
   { id: 'days', name: '10-Tage-Übersicht', sub: 'Tageswerte als Liste', icon: 'calendar' },
   { id: 'map', name: 'Karte', sub: 'Radar-Animation, Satellit, Wind, Warnungen, Schnee', icon: 'map' },
   { id: 'pollen', name: 'Pollenflug', sub: 'DWD-Gefahrenindex', icon: 'flower' }
 ];
 const NEW_IN_VERSION = ['nowcast', 'days'];
 
-// ---------- Zeiträume ----------
-const RANGES = [
-  { h: 12, label: '12 h', title: 'Die nächsten 12 Stunden' },
-  { h: 48, label: '2 Tage', title: 'Die nächsten 2 Tage' },
-  { h: 72, label: '3 Tage', title: 'Die nächsten 3 Tage' },
-  { h: 120, label: '5 Tage', title: 'Die nächsten 5 Tage' },
-  { h: 168, label: '7 Tage', title: 'Die nächsten 7 Tage' },
-  { h: 240, label: '10 Tage', title: 'Die nächsten 10 Tage' }
-];
+// ---------- Zeiträume (Stufen des Schiebereglers) ----------
+const RANGE_STEPS = [6, 12, 18, 24, 36, 48, 72, 96, 120, 144, 168, 192, 240, 288, 360];
+const rangeLabel = (h) => h < 48 ? `${h} h` : `${h / 24} Tage`;
+const rangeShort = (h) => h < 48 ? `${h} h` : `${h / 24} T`;
+const rangeTitle = (h) => h < 48 ? `Die nächsten ${h} Stunden` : `Die nächsten ${h / 24} Tage`;
 
 // ---------- Modelle (nur DWD und ECMWF) ----------
 const MODELS = [
@@ -66,6 +62,10 @@ const MODELS = [
   { key: 'ecmwf_aifs025', src: 'om', group: 'ECMWF', name: 'ECMWF AIFS (KI-Modell)', maxH: 360, meta: 'ecmwf_aifs025_single', info: 'ECMWF · KI-basiertes Modell · bis 15 Tage' }
 ];
 const MOSMIX = MODELS.find(m => m.key === 'mosmix');
+// „Automatisch“: für jeden Zeitraum das feinste Modell, das ihn abdeckt (Reihenfolge = Vorrang)
+const AUTO_CHAIN = ['dwd_icon_d2_ruc_native', 'dwd_icon_d2_native', 'dwd_icon_eu_native', 'mosmix', 'ecmwf_ifs025'].map(k => MODELS.find(m => m.key === k));
+const AUTO_SHORT = { dwd_icon_d2_ruc_native: 'RUC', dwd_icon_d2_native: 'D2', dwd_icon_eu_native: 'EU', mosmix: 'MOSMIX', ecmwf_ifs025: 'IFS' };
+const autoCandidates = (h) => AUTO_CHAIN.filter(m => m.maxH >= h);
 
 // ---------- Pollen ----------
 const POLLEN = [
@@ -91,7 +91,7 @@ const PCOL = ['#c8e6c9', '#e6ee9c', '#fff176', '#ffd54f', '#ffb74d', '#ff8a65', 
 
 const DEFAULTS = {
   loc: null, station: null, favs: [], basemap: 'bm_grau', sat: 'auto', satDay: '', satNight: '', intervalMin: 10,
-  notify: false, warnNotify: true, autoLocate: true, mapMode: 'radar', model: 'dwd_icon_d2_native', rangeH: 12,
+  notify: false, warnNotify: true, autoLocate: true, mapMode: 'radar', model: 'auto', rangeH: 12,
   pollen: POLLEN.map(p => p.k), pollenRegion: 'auto', pollenHideZero: false,
   showFeels: true, showDew: true, layout: null, layoutSeen: [], wizardFor: null, theme: 'system', scene: true, glass: 84,
   rainRadius: 10, rainMin: 'all', stormNotify: false, stormRadius: 50,
@@ -104,7 +104,9 @@ let S = (() => {
 })();
 const isUpgrade = !!localStorage.getItem(LS) && S.wizardFor !== WIZARD_VERSION;
 S.model = { icon_d2: 'dwd_icon_d2_native', icon_eu: 'dwd_icon_eu_native' }[S.model] || S.model;   // alte Modellnamen (bis 3.18)
-if (!MODELS.some(m => m.key === S.model)) S.model = 'dwd_icon_d2_native';   // entfernte Modelle → Standard
+if (!S.autoModelSeen) { S.model = 'auto'; S.autoModelSeen = true; }   // 3.26: Modell folgt dem Zeitraum (einmalig umstellen)
+if (S.model !== 'auto' && !MODELS.some(m => m.key === S.model)) S.model = 'auto';   // entfernte Modelle → Automatisch
+if (!RANGE_STEPS.includes(S.rangeH)) S.rangeH = RANGE_STEPS.reduce((a, h) => Math.abs(h - S.rangeH) < Math.abs(a - S.rangeH) ? h : a);
 delete S.keys;
 const save = () => { localStorage.setItem(LS, JSON.stringify(S)); syncNative(); };
 
@@ -806,26 +808,33 @@ async function fetchModel(m, lat, lon, H) {
 }
 
 // ---------- Verlauf ----------
-const currentModel = () => MODELS.find(m => m.key === S.model) || MODELS[0];
-const range = () => RANGES.find(r => r.h === S.rangeH) || RANGES[0];
+const currentModel = () => S.model === 'auto' ? null : MODELS.find(m => m.key === S.model) || null;
 let fcSeq = 0;
 async function loadForecast(lat, lon) {
   const seq = ++fcSeq;
-  const m = currentModel(), R = range();
-  $('#chartTitle').textContent = R.title;
+  const m = currentModel(), RH = S.rangeH;
+  $('#chartTitle').textContent = rangeTitle(RH);
   $('#chartInfo').textContent = 'Lade Vorhersage …';
-  const longer = m.longer && MODELS.find(x => x.key === m.longer);   // RUC reicht nur ~1 Tag: für längere Zeiträume ICON-D2
-  let used = m.maxH >= R.h ? m : longer && longer.maxH >= R.h ? longer : MOSMIX, res;
-  try { res = await fetchModel(used, lat, lon, R.h); }
-  catch (e) {
-    if (used === MOSMIX) throw e;
-    console.warn(`${m.name}: ${e.message} – Rückfall auf MOSMIX`);
-    used = MOSMIX; res = await fetchModel(MOSMIX, lat, lon, R.h);
+  // Reihenfolge der Versuche: Automatisch → feinstes passendes Modell, bei Fehler/fehlenden Daten das nächste
+  let tries;
+  if (!m) tries = autoCandidates(RH);
+  else {
+    const longer = m.longer && MODELS.find(x => x.key === m.longer);   // RUC reicht nur ~1 Tag: für längere Zeiträume ICON-D2
+    const first = m.maxH >= RH ? m : longer && longer.maxH >= RH ? longer : autoCandidates(RH)[0] || m;
+    tries = [first, ...autoCandidates(RH).filter(c => c !== first && (c.maxH > first.maxH || c === MOSMIX))];   // Rückfall auf gröbere Modelle
   }
   const start = new Date(); start.setMinutes(0, 0, 0);
-  const t0 = start.getTime(), t1 = t0 + R.h * HOUR;
-  let rows = res.rows.filter(r => r.temp != null && r.t >= t0 - 3 * HOUR && r.t <= t1 + 3 * HOUR).map(r => ({ ...r })).sort((a, b) => a.t - b.t);
-  if (rows.filter(r => r.t >= t0 && r.t <= t1).length < 2) throw new Error(`${used.name} liefert für diesen Ort keine Daten`);
+  const t0 = start.getTime(), t1 = t0 + RH * HOUR;
+  let used, res, rows, err;
+  for (const cand of tries) {
+    try {
+      res = await fetchModel(cand, lat, lon, RH);
+      rows = res.rows.filter(r => r.temp != null && r.t >= t0 - 3 * HOUR && r.t <= t1 + 3 * HOUR).map(r => ({ ...r })).sort((a, b) => a.t - b.t);
+      if (rows.filter(r => r.t >= t0 && r.t <= t1).length < 2) throw new Error(`${cand.name} liefert für diesen Ort keine Daten`);
+      used = cand; break;
+    } catch (e) { err = e; console.warn(`${cand.name}: ${e.message}`); }
+  }
+  if (!used) throw err;
   // Regenwahrscheinlichkeit: liefert das Modell keine, aus DWD MOSMIX ergänzen
   let probSrc = used.name;
   if (!rows.some(r => r.prob != null && r.t >= t0 && r.t <= t1)) {
@@ -836,7 +845,7 @@ async function loadForecast(lat, lon) {
     } catch { probSrc = null; }
   }
   if (seq !== fcSeq) return;
-  $('#modelInfo').innerHTML = `${I('clock')} <span><b>${esc(used.name)}</b> · ${runTxt(res.run, res.at)}</span>`;
+  $('#modelInfo').innerHTML = `${I('clock')} <span>${m ? '' : 'Automatisch: '}<b>${esc(used.name)}</b> · ${runTxt(res.run, res.at)}</span>`;
   $('#modelInfo').title = used.info;
   drawChart(rows, t0, t1, used, probSrc);
 }
@@ -1001,20 +1010,43 @@ function drawChart(rows, t0, t1, model, probSrc) {
 function initForecastControls() {
   const sel = $('#modelSelect'), groups = {};
   for (const m of MODELS) (groups[m.group] ||= []).push(m);
-  sel.innerHTML = Object.entries(groups).map(([g, list]) => `<optgroup label="${esc(g)}">${list.map(m => `<option value="${m.key}" title="${esc(m.info)}">${esc(m.name)}</option>`).join('')}</optgroup>`).join('');
-  sel.value = currentModel().key;
-  sel.onchange = () => { S.model = sel.value; save(); reloadForecast(); };
-  const seg = $('#rangeSeg');
-  seg.innerHTML = RANGES.map(r => `<button type="button" data-h="${r.h}" title="${r.title}" class="${r.h === S.rangeH ? 'active' : ''}"><span class="long">${r.label}</span><span class="short">${r.h === 12 ? '12 h' : r.h / 24 + ' T'}</span></button>`).join('');
-  seg.onclick = (e) => {
-    const b = e.target.closest('button'); if (!b) return;
-    S.rangeH = Number(b.dataset.h); save();
-    seg.querySelectorAll('button').forEach(x => x.classList.toggle('active', x === b));
-    reloadForecast();
+  sel.innerHTML = `<option value="auto" title="Wählt je nach Zeitraum das feinste passende Modell">Automatisch (passend zum Zeitraum)</option>`
+    + Object.entries(groups).map(([g, list]) => `<optgroup label="${esc(g)}">${list.map(m => `<option value="${m.key}" title="${esc(m.info)}">${esc(m.name)}</option>`).join('')}</optgroup>`).join('');
+  sel.value = currentModel()?.key || 'auto';
+  sel.onchange = () => { S.model = sel.value; save(); updateRangeUI(); reloadForecast(); };
+  const sl = $('#rangeSlider');
+  sl.max = String(RANGE_STEPS.length - 1);
+  sl.value = String(RANGE_STEPS.indexOf(S.rangeH));
+  // Modellband unter dem Regler: welcher Abschnitt mit welchem Modell gerechnet wird
+  const bands = [];
+  RANGE_STEPS.forEach((h, i) => { const k = autoCandidates(h)[0]?.key; if (bands.length && bands[bands.length - 1].k === k) bands[bands.length - 1].n++; else bands.push({ k, n: 1, i }); });
+  const N = RANGE_STEPS.length - 1;
+  $('#rangeBand').innerHTML = bands.map((b, j) => {
+    const a = Math.max(0, b.i - 0.5) / N * 100, e = Math.min(N, b.i + b.n - 0.5) / N * 100;
+    return `<span data-k="${b.k}" class="b${j % 2}" style="left:${a}%;width:${e - a}%" title="${esc(MODELS.find(m => m.key === b.k).name)}">${AUTO_SHORT[b.k]}</span>`;
+  }).join('');
+  let tmr = 0;
+  sl.oninput = () => {
+    S.rangeH = RANGE_STEPS[Number(sl.value)]; updateRangeUI();
+    clearTimeout(tmr); tmr = setTimeout(() => { save(); reloadForecast(); }, 350);   // beim Ziehen erst nach kurzer Pause laden
   };
+  sl.onchange = () => { clearTimeout(tmr); save(); reloadForecast(); };
+  updateRangeUI();
+}
+// Anzeige von Zeitraum und (bei „Automatisch“) gewähltem Modell, live beim Ziehen
+function updateRangeUI() {
+  const h = S.rangeH, auto = !currentModel(), m = auto ? autoCandidates(h)[0] : null;
+  $('#chartTitle').textContent = rangeTitle(h);
+  $('#rangeVal').textContent = rangeLabel(h);
+  $('#rangeSlider').setAttribute('aria-valuetext', rangeTitle(h));
+  const opt = $('#modelSelect option[value="auto"]');
+  if (opt) opt.textContent = `Automatisch – ${m ? m.name : 'passend zum Zeitraum'}`;
+  const band = $('#rangeBand');
+  band.hidden = !auto;
+  band.querySelectorAll('span').forEach(s => s.classList.toggle('on', !!m && s.dataset.k === m.key));
 }
 function reloadForecast() { if (S.loc) loadForecast(S.loc.lat, S.loc.lon).catch(showForecastError); }
-function showForecastError(e) { $('#chart').innerHTML = ''; $('#chartInfo').textContent = `Vorhersage nicht abrufbar (${e.message}).`; }
+function showForecastError(e) { $('#chart').innerHTML = ''; $('#modelInfo').textContent = ''; $('#chartInfo').textContent = `Vorhersage nicht abrufbar (${e.message}).`; }
 
 // ---------- 10-Tage-Übersicht (DWD MOSMIX) ----------
 function dayIcon(list) {

@@ -1,4 +1,13 @@
-# Wetter-App (PWA) – Version 3.25.0
+# Wetter-App (PWA) – Version 3.26.0
+
+## Neu in 3.26
+- Vorhersagediagramm: Statt der festen Knöpfe (12 h … 10 T) wählt ein Schieberegler den Zeitraum in 15 Stufen von 6 Stunden
+  bis 15 Tage. Beim Ziehen laden die Daten nach einer kurzen Pause bzw. beim Loslassen.
+- Neue Modellwahl „Automatisch“ (Standard, bestehende Einstellungen werden einmalig umgestellt): je nach Zeitraum das feinste
+  Modell, das ihn abdeckt – bis 24 h ICON-D2-RUC, bis 2 Tage ICON-D2, bis 5 Tage ICON-EU, bis 10 Tage MOSMIX, darüber ECMWF IFS.
+  Ein Band unter dem Regler zeigt die Abschnitte und hebt das aktive Modell hervor. Liefert ein Modell keine Daten (Fehler,
+  Ort außerhalb des Modellgebiets), springt die App auf das nächste der Kette.
+- Ein fest gewähltes Modell bleibt möglich; reicht es für den Zeitraum nicht, wird wie bisher auf ein längeres ausgewichen.
 
 ## Neu in 3.25
 - Karte: neuer Reiter „Schnee“ – Schneehöhe flächig für Europa, eingefärbt in Stufen (1, 5, 10, 20, 50, 100, 200 cm).
